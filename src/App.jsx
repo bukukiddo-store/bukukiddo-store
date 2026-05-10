@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -17,25 +17,44 @@ const C = {
   warn:"#F59E0B",
 };
 const FF = { display:"'Fredoka One', cursive", body:"'Nunito', sans-serif" };
-const fmt   = (n) => "Rp " + Number(n).toLocaleString("id-ID");
-const genId = () => "BK" + Date.now().toString(36).toUpperCase().slice(-8);
-const COURIERS  = ["JNE","J&T Express","SiCepat","Anteraja","Ninja Xpress"];
-const STATUSES  = ["Menunggu Pembayaran","Pembayaran Dikonfirmasi","Diproses","Dikirim","Selesai"];
-const BANK      = { bank:"BCA", no:"1234-5678-90", atas:"BukuKiddo Store" };
-const WA        = "6281234567890";
+const fmt    = (n) => "Rp " + Number(n).toLocaleString("id-ID");
+const genId  = () => "BK" + Date.now().toString(36).toUpperCase().slice(-8);
+const COURIERS   = ["JNE","J&T Express","SiCepat","Anteraja","Ninja Xpress"];
+const STATUSES   = ["Menunggu Pembayaran","Pembayaran Dikonfirmasi","Diproses","Dikirim","Selesai"];
+const BANK       = { bank:"BCA", no:"1234-5678-90", atas:"BukuKiddo Store" };
+const WA         = "6281234567890";
 const ADMIN_PASS = "bukukiddo2025";
+const MAX_IMG    = 7;
 
-const mapProduct = (p) => ({ ...p, desc: p.description });
+const mapProduct = (p) => ({ ...p, desc: p.description, preview_images: p.preview_images || [] });
 const mapOrder   = (o) => ({
   id: o.id,
   form:{ f:{ name:o.buyer_name, phone:o.buyer_phone, address:o.buyer_address, city:o.buyer_city, payment:o.payment, notes:o.notes } },
-  cart: o.cart || [], sub: o.sub, ongkir: o.ongkir||0, total: o.total,
+  cart: o.cart||[], sub: o.sub, ongkir: o.ongkir||0, total: o.total,
   status: o.status, courier: o.courier, resi: o.resi, date: o.created_at,
 });
 
+// ─── UPLOAD HELPERS ───────────────────────────────────────────────────────────
+const uploadImage = async (file, productId) => {
+  const ext  = file.name.split(".").pop();
+  const path = `${productId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from("book-previews").upload(path, file, { upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from("book-previews").getPublicUrl(path);
+  return data.publicUrl;
+};
+
+const deleteImage = async (url) => {
+  try {
+    const path = url.split("/book-previews/")[1];
+    if (path) await supabase.storage.from("book-previews").remove([path]);
+  } catch (e) { console.warn("Delete img failed:", e); }
+};
+
+// ─── BADGE ────────────────────────────────────────────────────────────────────
 function Badge({ type }) {
   const po = type==="preorder";
-  return <span style={{background:po?C.poBg:C.rsBg,color:po?C.po:C.rs,border:`1.5px solid ${po?C.po:C.rs}`,borderRadius:20,padding:"3px 11px",fontSize:"0.7rem",fontWeight:800,fontFamily:FF.body,letterSpacing:"0.5px",textTransform:"uppercase",whiteSpace:"nowrap"}}>{po?"⏳ Pre-Order":"✅ Ready Stock"}</span>;
+  return <span style={{background:po?C.poBg:C.rsBg,color:po?C.po:C.rs,border:`1.5px solid ${po?C.po:C.rs}`,borderRadius:20,padding:"3px 11px",fontSize:"0.7rem",fontWeight:800,fontFamily:FF.body,textTransform:"uppercase",whiteSpace:"nowrap"}}>{po?"⏳ Pre-Order":"✅ Ready Stock"}</span>;
 }
 
 function StatusPill({ s }) {
@@ -50,7 +69,104 @@ function Countdown({ deadline }) {
     const tick=()=>{ const diff=new Date(deadline)-new Date(); if(diff<=0)return setT({d:0,h:0,m:0,s:0}); setT({d:Math.floor(diff/864e5),h:Math.floor(diff%864e5/36e5),m:Math.floor(diff%36e5/6e4),s:Math.floor(diff%6e4/1000)}); };
     tick(); const id=setInterval(tick,1000); return()=>clearInterval(id);
   },[deadline]);
-  return <div style={{display:"flex",gap:6}}>{[["d","Hari"],["h","Jam"],["m","Mnt"],["s","Dtk"]].map(([k,l])=>(<div key={k} style={{textAlign:"center"}}><div style={{background:C.orange,color:"#fff",borderRadius:8,padding:"5px 8px",fontFamily:FF.display,fontSize:"1rem",minWidth:36}}>{String(t[k]).padStart(2,"0")}</div><div style={{fontSize:"0.62rem",color:C.muted,fontFamily:FF.body,marginTop:2}}>{l}</div></div>))}</div>;
+  return <div style={{display:"flex",gap:6}}>{[["d","Hari"],["h","Jam"],["m","Mnt"],["s","Dtk"]].map(([k,l])=>(<div key={k} style={{textAlign:"center"}}><div style={{background:C.orange,color:"#fff",borderRadius:8,padding:"5px 8px",fontFamily:FF.display,fontSize:"1rem",minWidth:36}}>{String(t[k]).padStart(2,"0")}</div><div style={{fontSize:"0.62rem",color:C.muted,marginTop:2}}>{l}</div></div>))}</div>;
+}
+
+// ─── IMAGE GALLERY (Product Page) ─────────────────────────────────────────────
+function ImageGallery({ images, emoji }) {
+  const [active, setActive] = useState(0);
+  const hasImages = images && images.length > 0;
+
+  if (!hasImages) {
+    return <div style={{background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",borderRadius:20,height:380,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9rem",border:`2px solid ${C.border}`}}>{emoji||"📗"}</div>;
+  }
+
+  return (
+    <div>
+      {/* Main Image */}
+      <div style={{position:"relative",borderRadius:20,overflow:"hidden",border:`2px solid ${C.border}`,marginBottom:12,background:"#f9f9f9"}}>
+        <img src={images[active]} alt={`Preview ${active+1}`} style={{width:"100%",height:380,objectFit:"cover",display:"block"}}/>
+        {/* Nav Arrows */}
+        {images.length > 1 && <>
+          <button onClick={()=>setActive(a=>(a-1+images.length)%images.length)} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.4)",color:"#fff",border:"none",borderRadius:"50%",width:36,height:36,fontSize:"1.1rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+          <button onClick={()=>setActive(a=>(a+1)%images.length)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.4)",color:"#fff",border:"none",borderRadius:"50%",width:36,height:36,fontSize:"1.1rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          <div style={{position:"absolute",bottom:10,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.45)",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:"0.75rem",fontFamily:FF.body,fontWeight:700}}>{active+1}/{images.length}</div>
+        </>}
+      </div>
+      {/* Thumbnails */}
+      {images.length > 1 && (
+        <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
+          {images.map((img,i)=>(
+            <div key={i} onClick={()=>setActive(i)} style={{flexShrink:0,width:72,height:72,borderRadius:10,overflow:"hidden",border:`2.5px solid ${active===i?C.orange:C.border}`,cursor:"pointer",transition:"border .2s"}}>
+              <img src={img} alt={`thumb-${i}`} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── IMAGE UPLOADER (Admin) ────────────────────────────────────────────────────
+function ImageUploader({ images, setImages, productId, uploading, setUploading }) {
+  const inputRef = useRef();
+
+  const handleFiles = async (files) => {
+    const remaining = MAX_IMG - images.length;
+    if (remaining <= 0) return alert(`Maksimal ${MAX_IMG} gambar per produk`);
+    const toUpload = Array.from(files).slice(0, remaining);
+    setUploading(true);
+    try {
+      const pid = productId || "temp_" + Date.now();
+      const urls = await Promise.all(toUpload.map(f => uploadImage(f, pid)));
+      setImages(prev => [...prev, ...urls]);
+    } catch (e) {
+      alert("Gagal upload gambar: " + e.message);
+    }
+    setUploading(false);
+  };
+
+  const removeImage = async (idx) => {
+    if (!window.confirm("Hapus gambar ini?")) return;
+    await deleteImage(images[idx]);
+    setImages(prev => prev.filter((_,i) => i !== idx));
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <label style={{fontSize:"0.8rem",fontWeight:700,color:C.text}}>📸 Preview Isi Buku</label>
+        <span style={{fontSize:"0.75rem",color:C.muted,fontWeight:700}}>{images.length}/{MAX_IMG} foto</span>
+      </div>
+
+      {/* Uploaded Images Grid */}
+      {images.length > 0 && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}}>
+          {images.map((url,i)=>(
+            <div key={i} style={{position:"relative",aspectRatio:"1",borderRadius:10,overflow:"hidden",border:`2px solid ${C.border}`}}>
+              <img src={url} alt={`preview-${i}`} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              <button onClick={()=>removeImage(i)} style={{position:"absolute",top:3,right:3,background:"rgba(231,76,60,0.9)",color:"#fff",border:"none",borderRadius:"50%",width:22,height:22,fontSize:"0.75rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>✕</button>
+              {i===0 && <div style={{position:"absolute",bottom:3,left:3,background:"rgba(232,97,42,0.85)",color:"#fff",borderRadius:6,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>Cover</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload Button */}
+      {images.length < MAX_IMG && (
+        <div onClick={()=>!uploading&&inputRef.current.click()}
+          style={{border:`2px dashed ${uploading?C.mint:C.border}`,borderRadius:12,padding:"16px",textAlign:"center",cursor:uploading?"not-allowed":"pointer",background:uploading?"#E6FAF6":"#fafafa",transition:"all .2s"}}>
+          <input ref={inputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>handleFiles(e.target.files)}/>
+          {uploading ? (
+            <><div style={{fontSize:"1.8rem",marginBottom:4}}>⏳</div><p style={{margin:0,fontSize:"0.82rem",color:C.mint,fontWeight:700}}>Mengupload gambar...</p></>
+          ) : (
+            <><div style={{fontSize:"1.8rem",marginBottom:4}}>📷</div><p style={{margin:0,fontSize:"0.82rem",color:C.muted,fontWeight:700}}>Tap untuk pilih foto</p><p style={{margin:"4px 0 0",fontSize:"0.73rem",color:C.muted}}>Maks {MAX_IMG} foto · JPG / PNG · Sisa: {MAX_IMG-images.length} slot</p></>
+          )}
+        </div>
+      )}
+      {images.length > 0 && <p style={{fontSize:"0.72rem",color:C.muted,margin:"6px 0 0"}}>💡 Foto pertama akan tampil sebagai gambar utama di katalog</p>}
+    </div>
+  );
 }
 
 function Nav({ setView, cartCount, back, backLabel }) {
@@ -60,7 +176,7 @@ function Nav({ setView, cartCount, back, backLabel }) {
       <div style={{display:"flex",gap:8}}>
         <button onClick={()=>setView("track")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 14px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>🔍 Lacak</button>
         <button onClick={()=>setView("admin")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 14px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>⚙️ Admin</button>
-        <button onClick={()=>setView("cart")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"8px 18px",cursor:"pointer",fontFamily:FF.display,fontSize:"1rem",display:"flex",alignItems:"center",gap:6}}>🛒 {cartCount>0&&<span style={{background:C.yellow,color:C.text,borderRadius:10,padding:"1px 7px",fontSize:"0.78rem",fontWeight:800}}>{cartCount}</span>}</button>
+        <button onClick={()=>setView("cart")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"8px 18px",cursor:"pointer",fontFamily:FF.display,fontSize:"1rem",display:"flex",alignItems:"center",gap:6}}>🛒{cartCount>0&&<span style={{background:C.yellow,color:C.text,borderRadius:10,padding:"1px 7px",fontSize:"0.78rem",fontWeight:800}}>{cartCount}</span>}</button>
       </div>
     </nav>
   );
@@ -72,38 +188,43 @@ function HomePage({ products, loading, cart, setView, setSelected, filter, setFi
   return (
     <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
       <Nav setView={setView} cartCount={cartCount}/>
-      <div style={{background:"linear-gradient(135deg,#FFF0E4 0%,#FFEBD0 60%,#FFE4C4 100%)",padding:"36px 20px 28px",textAlign:"center",position:"relative",overflow:"hidden"}}>
+      <div style={{background:"linear-gradient(135deg,#FFF0E4,#FFEBD0,#FFE4C4)",padding:"36px 20px 28px",textAlign:"center"}}>
         <div style={{fontSize:"6rem",marginBottom:4}}>📚</div>
         <h1 style={{fontFamily:FF.display,fontSize:"2.2rem",color:C.orange,margin:"0 0 6px"}}>BukuKiddo 📚</h1>
         <p style={{color:C.muted,fontSize:"1rem",fontWeight:700,margin:"0 0 22px"}}>Teman Baca Terbaik untuk Si Kecil yang Penasaran!</p>
-        <div style={{maxWidth:400,margin:"0 auto"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Cari judul atau kategori buku..." style={{width:"100%",padding:"13px 20px",borderRadius:30,border:`2.5px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,outline:"none",boxSizing:"border-box",background:"#fff",boxShadow:"0 4px 20px rgba(232,97,42,0.1)"}}/>
-        </div>
+        <div style={{maxWidth:400,margin:"0 auto"}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Cari judul atau kategori buku..." style={{width:"100%",padding:"13px 20px",borderRadius:30,border:`2.5px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,outline:"none",boxSizing:"border-box",background:"#fff",boxShadow:"0 4px 20px rgba(232,97,42,0.1)"}}/></div>
       </div>
       <div style={{padding:"18px 20px 4px",display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
         {[["all","📚 Semua"],["preorder","⏳ Pre-Order"],["ready","✅ Ready Stock"]].map(([v,l])=>(<button key={v} onClick={()=>setFilter(v)} style={{padding:"8px 18px",borderRadius:20,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.88rem",background:filter===v?C.orange:"#fff",color:filter===v?"#fff":C.muted,border:`2px solid ${filter===v?C.orange:C.border}`}}>{l}</button>))}
       </div>
       {loading&&<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"3rem"}}>⏳</div><p style={{fontFamily:FF.display,fontSize:"1.2rem",marginTop:12}}>Memuat produk...</p></div>}
-      {!loading&&(<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:18,padding:"16px 20px 48px",maxWidth:1120,margin:"0 auto"}}>
-        {filtered.map(p=>(<div key={p.id} onClick={()=>{setSelected(p);setView("product");}} style={{background:"#fff",borderRadius:18,overflow:"hidden",border:`2px solid ${C.border}`,cursor:"pointer",transition:"transform .2s, box-shadow .2s",boxShadow:"0 2px 12px rgba(232,97,42,0.05)"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-5px)";e.currentTarget.style.boxShadow="0 10px 28px rgba(232,97,42,0.14)";}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(232,97,42,0.05)";}}>
-          <div style={{background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",height:160,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"5rem",position:"relative"}}>
-            {p.emoji||"📗"}<div style={{position:"absolute",top:10,left:10}}><Badge type={p.status}/></div>
-            {p.status==="ready"&&p.stock&&p.stock<=5&&<div style={{position:"absolute",top:10,right:10,background:"#FFF3E0",color:"#E65100",borderRadius:10,padding:"2px 8px",fontSize:"0.65rem",fontWeight:800}}>Stok {p.stock}!</div>}
-          </div>
-          <div style={{padding:"14px 16px"}}>
-            <div style={{fontSize:"0.72rem",color:C.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{p.category||"Umum"} · {p.origin||""}</div>
-            <h3 style={{fontFamily:FF.display,fontSize:"0.97rem",color:C.text,margin:"0 0 6px"}}>{p.name}</h3>
-            <p style={{fontSize:"0.8rem",color:C.muted,margin:"0 0 10px",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.desc||""}</p>
-            {p.status==="preorder"&&p.deadline&&<div style={{marginBottom:8}}><div style={{fontSize:"0.7rem",color:C.po,fontWeight:800,marginBottom:4}}>⏰ Ditutup dalam:</div><Countdown deadline={p.deadline}/></div>}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
-              <div style={{fontFamily:FF.display,fontSize:"1.15rem",color:C.orange}}>{fmt(p.price)}</div>
-              <div style={{fontSize:"0.73rem",color:C.muted}}>{p.status==="ready"?`Stok: ${p.stock||"∞"}`:p.age||""}</div>
+      {!loading&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:18,padding:"16px 20px 48px",maxWidth:1120,margin:"0 auto"}}>
+        {filtered.map(p=>{
+          const cover = p.preview_images&&p.preview_images.length>0 ? p.preview_images[0] : null;
+          return (
+            <div key={p.id} onClick={()=>{setSelected(p);setView("product");}} style={{background:"#fff",borderRadius:18,overflow:"hidden",border:`2px solid ${C.border}`,cursor:"pointer",transition:"transform .2s,box-shadow .2s",boxShadow:"0 2px 12px rgba(232,97,42,0.05)"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-5px)";e.currentTarget.style.boxShadow="0 10px 28px rgba(232,97,42,0.14)";}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 2px 12px rgba(232,97,42,0.05)";}}>
+              <div style={{height:190,position:"relative",overflow:"hidden",background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)"}}>
+                {cover ? <img src={cover} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"5rem"}}>{p.emoji||"📗"}</div>}
+                <div style={{position:"absolute",top:10,left:10}}><Badge type={p.status}/></div>
+                {p.preview_images&&p.preview_images.length>1&&<div style={{position:"absolute",bottom:8,right:8,background:"rgba(0,0,0,0.5)",color:"#fff",borderRadius:12,padding:"2px 8px",fontSize:"0.68rem",fontWeight:700}}>📸 {p.preview_images.length} foto</div>}
+                {p.status==="ready"&&p.stock&&p.stock<=5&&<div style={{position:"absolute",top:10,right:10,background:"#FFF3E0",color:"#E65100",borderRadius:10,padding:"2px 8px",fontSize:"0.65rem",fontWeight:800}}>Stok {p.stock}!</div>}
+              </div>
+              <div style={{padding:"14px 16px"}}>
+                <div style={{fontSize:"0.72rem",color:C.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{p.category||"Umum"} · {p.origin||""}</div>
+                <h3 style={{fontFamily:FF.display,fontSize:"0.97rem",color:C.text,margin:"0 0 6px"}}>{p.name}</h3>
+                <p style={{fontSize:"0.8rem",color:C.muted,margin:"0 0 10px",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.desc||""}</p>
+                {p.status==="preorder"&&p.deadline&&<div style={{marginBottom:8}}><div style={{fontSize:"0.7rem",color:C.po,fontWeight:800,marginBottom:4}}>⏰ Ditutup dalam:</div><Countdown deadline={p.deadline}/></div>}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
+                  <div style={{fontFamily:FF.display,fontSize:"1.15rem",color:C.orange}}>{fmt(p.price)}</div>
+                  <div style={{fontSize:"0.73rem",color:C.muted}}>{p.status==="ready"?`Stok: ${p.stock||"∞"}`:p.age||""}</div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>))}
-      </div>)}
-      {!loading&&filtered.length===0&&<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"4rem"}}>📭</div><p style={{fontFamily:FF.display,fontSize:"1.3rem",margin:"12px 0 6px"}}>{products.length===0?"Belum ada produk":"Buku tidak ditemukan"}</p><p style={{fontSize:"0.88rem"}}>{products.length===0?"Admin sedang menyiapkan katalog":"Coba kata kunci lain"}</p></div>}
-      <footer style={{background:C.text,color:"#fff",padding:"28px 24px",textAlign:"center"}}><div style={{fontFamily:FF.display,fontSize:"1.4rem",marginBottom:6}}>📚 BukuKiddo</div><p style={{color:"#aaa",fontSize:"0.82rem",margin:"0 0 4px"}}>Pengiriman dari Jakarta · Semarang · Jawa Tengah</p><p style={{color:"#666",fontSize:"0.75rem",margin:0}}>© 2025 BukuKiddo. Teman baca terbaik si kecil.</p></footer>
+          );
+        })}
+      </div>}
+      {!loading&&filtered.length===0&&<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"4rem"}}>📭</div><p style={{fontFamily:FF.display,fontSize:"1.3rem",margin:"12px 0 6px"}}>{products.length===0?"Belum ada produk":"Tidak ditemukan"}</p></div>}
+      <footer style={{background:C.text,color:"#fff",padding:"28px 24px",textAlign:"center"}}><div style={{fontFamily:FF.display,fontSize:"1.4rem",marginBottom:6}}>📚 BukuKiddo</div><p style={{color:"#aaa",fontSize:"0.82rem",margin:"0 0 4px"}}>Pengiriman dari Jakarta · Semarang · Jawa Tengah</p><p style={{color:"#666",fontSize:"0.75rem",margin:0}}>© 2025 BukuKiddo.</p></footer>
     </div>
   );
 }
@@ -112,11 +233,23 @@ function ProductPage({ product:p, onAdd, setView, cart }) {
   const [qty,setQty]=useState(1); const [added,setAdded]=useState(false);
   const cartCount=cart.reduce((s,i)=>s+i.qty,0);
   const doAdd=()=>{onAdd(p,qty);setAdded(true);setTimeout(()=>setAdded(false),2200);};
+  const hasPreview = p.preview_images && p.preview_images.length > 0;
+
   return (
     <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
       <Nav setView={setView} cartCount={cartCount} back="home" backLabel="BukuKiddo"/>
       <div style={{maxWidth:900,margin:"0 auto",padding:"28px 20px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:36}}>
-        <div><div style={{background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",borderRadius:20,height:380,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9rem",border:`2px solid ${C.border}`}}>{p.emoji||"📗"}</div></div>
+        {/* Left: Gallery */}
+        <div>
+          <ImageGallery images={p.preview_images||[]} emoji={p.emoji||"📗"}/>
+          {hasPreview && (
+            <div style={{background:C.poBg,borderRadius:10,padding:"8px 14px",marginTop:12,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:"1rem"}}>👀</span>
+              <p style={{margin:0,fontSize:"0.78rem",color:C.po,fontWeight:700}}>Preview Isi Buku — {p.preview_images.length} halaman sample tersedia</p>
+            </div>
+          )}
+        </div>
+        {/* Right: Info */}
         <div>
           <div style={{marginBottom:10}}><Badge type={p.status}/></div>
           <div style={{fontSize:"0.78rem",color:C.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{p.category||"Umum"} · Dikirim dari {p.origin||""}</div>
@@ -126,7 +259,7 @@ function ProductPage({ product:p, onAdd, setView, cart }) {
           <div style={{background:C.bg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${C.border}`}}>
             {[["📖","Halaman",(p.pages||"-")+" hal"],["👶","Usia",p.age||"-"],["📦","Berat",p.weight||"-"],["📍","Asal",p.origin||"-"]].map(([icon,l,v])=>(<div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:"0.86rem"}}><span style={{color:C.muted}}>{icon} {l}</span><span style={{fontWeight:800,color:C.text}}>{v}</span></div>))}
           </div>
-          {p.status==="preorder"&&p.deadline&&<div style={{background:C.poBg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${C.po}30`}}><div style={{fontSize:"0.8rem",color:C.po,fontWeight:800,marginBottom:8}}>⏰ Pre-Order Ditutup Dalam:</div><Countdown deadline={p.deadline}/><p style={{fontSize:"0.76rem",color:C.po,margin:"8px 0 0"}}>⚠️ Segera pesan sebelum periode pre-order berakhir!</p></div>}
+          {p.status==="preorder"&&p.deadline&&<div style={{background:C.poBg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${C.po}30`}}><div style={{fontSize:"0.8rem",color:C.po,fontWeight:800,marginBottom:8}}>⏰ Pre-Order Ditutup Dalam:</div><Countdown deadline={p.deadline}/></div>}
           {p.status==="ready"&&p.stock&&p.stock<=5&&<div style={{background:"#FFF3E0",borderRadius:12,padding:"10px 14px",marginBottom:14,border:"2px solid #FFC947"}}><span style={{color:"#E65100",fontWeight:800,fontSize:"0.85rem"}}>🔥 Stok tersisa {p.stock} pcs!</span></div>}
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`2px solid ${C.border}`,borderRadius:30,padding:"4px 8px"}}>
@@ -155,18 +288,23 @@ function CartPage({ cart, setCart, setView }) {
       </nav>
       <div style={{maxWidth:680,margin:"0 auto",padding:"24px 20px"}}>
         {cart.length===0?(<div style={{textAlign:"center",padding:"80px 0",color:C.muted}}><div style={{fontSize:"5rem"}}>🛒</div><p style={{fontFamily:FF.display,fontSize:"1.4rem",margin:"14px 0 6px"}}>Keranjang Masih Kosong</p><button onClick={()=>setView("home")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"12px 28px",fontFamily:FF.display,fontSize:"1rem",cursor:"pointer",marginTop:16}}>Lihat Buku</button></div>):(
-          <>{cart.map(({product:p,qty})=>(<div key={p.id} style={{background:"#fff",borderRadius:16,padding:"16px",marginBottom:12,border:`2px solid ${C.border}`,display:"flex",gap:14,alignItems:"center"}}>
-            <div style={{fontSize:"2.8rem",background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",borderRadius:12,width:70,height:70,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{p.emoji||"📗"}</div>
-            <div style={{flex:1}}><div style={{fontFamily:FF.display,fontSize:"0.97rem",color:C.text,marginBottom:3}}>{p.name}</div><Badge type={p.status}/><div style={{fontFamily:FF.display,color:C.orange,marginTop:5}}>{fmt(p.price*qty)}</div></div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <button onClick={()=>upd(p.id,-1)} style={{width:28,height:28,borderRadius:"50%",border:`2px solid ${C.border}`,background:"#fff",cursor:"pointer",fontWeight:700}}>−</button>
-                <span style={{fontWeight:800,minWidth:20,textAlign:"center",fontFamily:FF.display}}>{qty}</span>
-                <button onClick={()=>upd(p.id,1)} style={{width:28,height:28,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontWeight:700,color:"#fff"}}>+</button>
+          <>{cart.map(({product:p,qty})=>{
+            const thumb=p.preview_images&&p.preview_images.length>0?p.preview_images[0]:null;
+            return (<div key={p.id} style={{background:"#fff",borderRadius:16,padding:"16px",marginBottom:12,border:`2px solid ${C.border}`,display:"flex",gap:14,alignItems:"center"}}>
+              <div style={{width:70,height:70,borderRadius:12,overflow:"hidden",flexShrink:0,border:`2px solid ${C.border}`,background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {thumb?<img src={thumb} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:"2.2rem"}}>{p.emoji||"📗"}</span>}
               </div>
-              <button onClick={()=>del(p.id)} style={{background:"none",border:"none",color:"#e74c3c",cursor:"pointer",fontSize:"0.78rem",fontWeight:700}}>🗑️ Hapus</button>
-            </div>
-          </div>))}
+              <div style={{flex:1}}><div style={{fontFamily:FF.display,fontSize:"0.97rem",color:C.text,marginBottom:3}}>{p.name}</div><Badge type={p.status}/><div style={{fontFamily:FF.display,color:C.orange,marginTop:5}}>{fmt(p.price*qty)}</div></div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button onClick={()=>upd(p.id,-1)} style={{width:28,height:28,borderRadius:"50%",border:`2px solid ${C.border}`,background:"#fff",cursor:"pointer",fontWeight:700}}>−</button>
+                  <span style={{fontWeight:800,minWidth:20,textAlign:"center",fontFamily:FF.display}}>{qty}</span>
+                  <button onClick={()=>upd(p.id,1)} style={{width:28,height:28,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontWeight:700,color:"#fff"}}>+</button>
+                </div>
+                <button onClick={()=>del(p.id)} style={{background:"none",border:"none",color:"#e74c3c",cursor:"pointer",fontSize:"0.78rem",fontWeight:700}}>🗑️ Hapus</button>
+              </div>
+            </div>);
+          })}
           <div style={{background:"#fff",borderRadius:16,padding:"20px",border:`2px solid ${C.border}`}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,color:C.muted,fontSize:"0.88rem"}}><span>Subtotal ({count} item)</span><span style={{fontWeight:700,color:C.text}}>{fmt(total)}</span></div>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,color:C.muted,fontSize:"0.88rem"}}><span>Ongkos kirim</span><span style={{color:C.mint,fontWeight:700}}>Ditentukan agen</span></div>
@@ -206,17 +344,17 @@ function CheckoutPage({ cart, setView, onPlace }) {
               <div style={{gridColumn:"1/-1"}}>{inp("address","Alamat Lengkap *","text","Jl. Contoh No. 1")}</div>
               {inp("city","Kota/Kabupaten *","text","Jakarta Selatan")}{inp("province","Provinsi","text","DKI Jakarta")}
             </div>
-            <div style={{background:C.yellowL,border:`2px solid ${C.yellow}`,borderRadius:10,padding:"10px 14px",marginBottom:12}}><p style={{margin:0,fontSize:"0.83rem",color:"#7A5C00",fontWeight:700}}>🚚 Kurir pengiriman akan ditentukan oleh agen dan dikonfirmasi admin setelah pesananmu diproses.</p></div>
-            <div><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:4}}>Catatan (opsional)</label><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} placeholder="Instruksi khusus..." style={{width:"100%",padding:"10px 14px",borderRadius:10,border:`2px solid ${C.border}`,fontSize:"0.9rem",fontFamily:FF.body,boxSizing:"border-box",resize:"none"}}/></div>
+            <div style={{background:C.yellowL,border:`2px solid ${C.yellow}`,borderRadius:10,padding:"10px 14px",marginBottom:12}}><p style={{margin:0,fontSize:"0.83rem",color:"#7A5C00",fontWeight:700}}>🚚 Kurir ditentukan agen & dikonfirmasi admin setelah pesanan diproses.</p></div>
+            <div><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:4}}>Catatan (opsional)</label><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{width:"100%",padding:"10px 14px",borderRadius:10,border:`2px solid ${C.border}`,fontSize:"0.9rem",fontFamily:FF.body,boxSizing:"border-box",resize:"none"}}/></div>
           </Card>
           <Card title="💳 Metode Pembayaran">
-            {[["transfer","🏦 Transfer Bank Manual","Konfirmasi via WhatsApp · BCA"],["qris","⚡ QRIS / Virtual Account","Pembayaran otomatis via Midtrans"]].map(([v,l,d])=>(<div key={v} onClick={()=>set("payment",v)} style={{border:`2.5px solid ${f.payment===v?C.orange:C.border}`,borderRadius:12,padding:"13px 16px",marginBottom:10,cursor:"pointer",background:f.payment===v?C.poBg:"#fff",display:"flex",alignItems:"center",gap:12}}><div style={{width:20,height:20,borderRadius:"50%",border:`2.5px solid ${f.payment===v?C.orange:C.border}`,background:f.payment===v?C.orange:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{f.payment===v&&<div style={{width:8,height:8,borderRadius:"50%",background:"#fff"}}/>}</div><div><div style={{fontWeight:700,color:C.text,fontSize:"0.92rem"}}>{l}</div><div style={{fontSize:"0.78rem",color:C.muted}}>{d}</div></div></div>))}
+            {[["transfer","🏦 Transfer Bank Manual","Konfirmasi via WhatsApp · BCA"],["qris","⚡ QRIS / Virtual Account","via Midtrans · Xendit"]].map(([v,l,d])=>(<div key={v} onClick={()=>set("payment",v)} style={{border:`2.5px solid ${f.payment===v?C.orange:C.border}`,borderRadius:12,padding:"13px 16px",marginBottom:10,cursor:"pointer",background:f.payment===v?C.poBg:"#fff",display:"flex",alignItems:"center",gap:12}}><div style={{width:20,height:20,borderRadius:"50%",border:`2.5px solid ${f.payment===v?C.orange:C.border}`,background:f.payment===v?C.orange:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{f.payment===v&&<div style={{width:8,height:8,borderRadius:"50%",background:"#fff"}}/>}</div><div><div style={{fontWeight:700,color:C.text,fontSize:"0.92rem"}}>{l}</div><div style={{fontSize:"0.78rem",color:C.muted}}>{d}</div></div></div>))}
           </Card>
         </div>
         <div>
           <div style={{background:"#fff",borderRadius:16,padding:"20px",border:`2px solid ${C.border}`,position:"sticky",top:80}}>
             <h3 style={{fontFamily:FF.display,color:C.text,margin:"0 0 14px",fontSize:"1.1rem"}}>📋 Ringkasan Order</h3>
-            {cart.map(({product:p,qty})=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:"0.85rem"}}><span style={{color:C.text,flex:1}}>{p.emoji||"📗"} {p.name} <span style={{color:C.muted}}>×{qty}</span></span><span style={{fontWeight:700,marginLeft:8}}>{fmt(p.price*qty)}</span></div>))}
+            {cart.map(({product:p,qty})=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:"0.85rem"}}><span style={{flex:1}}>{p.emoji||"📗"} {p.name} <span style={{color:C.muted}}>×{qty}</span></span><span style={{fontWeight:700,marginLeft:8}}>{fmt(p.price*qty)}</span></div>))}
             <div style={{borderTop:`2px dashed ${C.border}`,marginTop:12,paddingTop:12}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:"0.85rem",color:C.muted}}><span>Subtotal</span><span>{fmt(sub)}</span></div>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,fontSize:"0.85rem",color:C.warn}}><span>Ongkos Kirim</span><span>Ditentukan agen</span></div>
@@ -232,8 +370,7 @@ function CheckoutPage({ cart, setView, onPlace }) {
 
 function PaymentPage({ order, setView }) {
   const [proof,setProof]=useState(null); const [sent,setSent]=useState(false);
-  const name=order.form?.f?.name||"";
-  const waMsg=encodeURIComponent(`Halo BukuKiddo! 👋\nSaya sudah transfer untuk pesanan:\n\nID: ${order.id}\nNama: ${name}\nTotal: ${fmt(order.total)}\n\nMohon dikonfirmasi ya 🙏`);
+  const waMsg=encodeURIComponent(`Halo BukuKiddo! 👋\nSaya sudah transfer:\n\nID: ${order.id}\nNama: ${order.form?.f?.name||""}\nTotal: ${fmt(order.total)}\n\nMohon dikonfirmasi 🙏`);
   return (
     <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
       <nav style={{background:"#fff",borderBottom:`3px solid ${C.yellow}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
@@ -246,51 +383,37 @@ function PaymentPage({ order, setView }) {
           <div style={{fontFamily:FF.display,fontSize:"2rem",letterSpacing:3}}>{order.id}</div>
           <div style={{fontSize:"0.78rem",opacity:0.8,marginTop:6}}>📌 Simpan ID ini untuk melacak pesananmu</div>
         </div>
-        {order.form?.f?.payment==="transfer"?(
-          <><Card title="🏦 Detail Transfer Bank">
-            <div style={{textAlign:"center",background:C.poBg,borderRadius:12,padding:"18px",marginBottom:14}}>
-              <div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange}}>{BANK.bank}</div>
-              <div style={{fontSize:"1.5rem",fontWeight:900,letterSpacing:3,color:C.text,margin:"4px 0"}}>{BANK.no}</div>
-              <div style={{color:C.muted,fontSize:"0.88rem"}}>a.n. <strong>{BANK.atas}</strong></div>
-            </div>
-            <div style={{background:"#fff",border:`2px solid ${C.orange}`,borderRadius:12,padding:"14px",textAlign:"center"}}>
-              <div style={{fontSize:"0.83rem",color:C.muted,marginBottom:4}}>Total yang harus ditransfer</div>
-              <div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange}}>{fmt(order.total)}</div>
-            </div>
+        {order.form?.f?.payment==="transfer"?(<>
+          <Card title="🏦 Detail Transfer Bank">
+            <div style={{textAlign:"center",background:C.poBg,borderRadius:12,padding:"18px",marginBottom:14}}><div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange}}>{BANK.bank}</div><div style={{fontSize:"1.5rem",fontWeight:900,letterSpacing:3,color:C.text,margin:"4px 0"}}>{BANK.no}</div><div style={{color:C.muted,fontSize:"0.88rem"}}>a.n. <strong>{BANK.atas}</strong></div></div>
+            <div style={{background:"#fff",border:`2px solid ${C.orange}`,borderRadius:12,padding:"14px",textAlign:"center"}}><div style={{fontSize:"0.83rem",color:C.muted,marginBottom:4}}>Total yang harus ditransfer</div><div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange}}>{fmt(order.total)}</div></div>
           </Card>
           <Card title="📤 Konfirmasi Pembayaran">
             <a href={`https://wa.me/${WA}?text=${waMsg}`} target="_blank" rel="noreferrer" style={{display:"block",background:"#25D366",color:"#fff",borderRadius:20,padding:"14px",textAlign:"center",textDecoration:"none",fontFamily:FF.display,fontSize:"1.05rem",marginBottom:12}}>📱 Konfirmasi via WhatsApp</a>
-            {!sent?(<div style={{border:`2px dashed ${C.border}`,borderRadius:12,padding:"20px",textAlign:"center",cursor:"pointer"}} onClick={()=>document.getElementById("pf").click()}><input id="pf" type="file" accept="image/*" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){setProof(URL.createObjectURL(e.target.files[0]));setSent(true);}}}/>{proof?<img src={proof} alt="bukti" style={{maxWidth:"100%",borderRadius:8}}/>:<><div style={{fontSize:"2rem",marginBottom:6}}>📎</div><p style={{color:C.muted,fontSize:"0.85rem",margin:0}}>Upload bukti transfer</p></>}</div>
-            ):(<div style={{background:C.rsBg,borderRadius:12,padding:"16px",textAlign:"center"}}><div style={{fontSize:"2rem"}}>✅</div><p style={{color:C.rs,fontWeight:800,margin:"4px 0"}}>Bukti Berhasil Diupload!</p></div>)}
-          </Card></>
-        ):(<Card title="⚡ QRIS / Virtual Account"><div style={{textAlign:"center",padding:20}}><div style={{width:180,height:180,background:"#f9f9f9",border:`2px solid ${C.border}`,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}><p style={{fontSize:"0.73rem",color:C.muted,textAlign:"center",padding:12}}>🔧 QR Code aktif setelah integrasi Midtrans diaktifkan admin</p></div><div style={{fontFamily:FF.display,fontSize:"1.6rem",color:C.orange}}>{fmt(order.total)}</div><a href={`https://wa.me/${WA}?text=${waMsg}`} target="_blank" rel="noreferrer" style={{display:"inline-block",background:"#25D366",color:"#fff",borderRadius:20,padding:"12px 24px",textDecoration:"none",fontFamily:FF.display,marginTop:14}}>📱 Hubungi Admin</a></div></Card>)}
-        <div style={{background:C.rsBg,borderRadius:12,padding:"14px 16px"}}><p style={{margin:0,fontSize:"0.85rem",color:C.rs,fontWeight:700}}>🔍 Lacak pesanan dengan ID: <strong>{order.id}</strong></p><button onClick={()=>setView("track")} style={{background:"none",border:"none",color:C.rs,fontWeight:700,cursor:"pointer",padding:0,marginTop:4,textDecoration:"underline",fontFamily:FF.body,fontSize:"0.85rem"}}>Klik di sini untuk lacak pesanan →</button></div>
+            {!sent?(<div style={{border:`2px dashed ${C.border}`,borderRadius:12,padding:"20px",textAlign:"center",cursor:"pointer"}} onClick={()=>document.getElementById("pf").click()}><input id="pf" type="file" accept="image/*" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){setProof(URL.createObjectURL(e.target.files[0]));setSent(true);}}}/>{proof?<img src={proof} alt="bukti" style={{maxWidth:"100%",borderRadius:8}}/>:<><div style={{fontSize:"2rem",marginBottom:6}}>📎</div><p style={{color:C.muted,fontSize:"0.85rem",margin:0}}>Upload bukti transfer</p></>}</div>):(<div style={{background:C.rsBg,borderRadius:12,padding:"16px",textAlign:"center"}}><div style={{fontSize:"2rem"}}>✅</div><p style={{color:C.rs,fontWeight:800,margin:"4px 0"}}>Bukti Berhasil Diupload!</p></div>)}
+          </Card>
+        </>):(<Card title="⚡ QRIS"><div style={{textAlign:"center",padding:20}}><div style={{width:180,height:180,background:"#f9f9f9",border:`2px solid ${C.border}`,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}><p style={{fontSize:"0.73rem",color:C.muted,textAlign:"center",padding:12}}>🔧 QR Code aktif setelah integrasi Midtrans</p></div><div style={{fontFamily:FF.display,fontSize:"1.6rem",color:C.orange}}>{fmt(order.total)}</div><a href={`https://wa.me/${WA}?text=${waMsg}`} target="_blank" rel="noreferrer" style={{display:"inline-block",background:"#25D366",color:"#fff",borderRadius:20,padding:"12px 24px",textDecoration:"none",fontFamily:FF.display,marginTop:14}}>📱 Hubungi Admin</a></div></Card>)}
+        <div style={{background:C.rsBg,borderRadius:12,padding:"14px 16px"}}><p style={{margin:0,fontSize:"0.85rem",color:C.rs,fontWeight:700}}>🔍 Lacak: <strong>{order.id}</strong></p><button onClick={()=>setView("track")} style={{background:"none",border:"none",color:C.rs,fontWeight:700,cursor:"pointer",padding:0,marginTop:4,textDecoration:"underline",fontFamily:FF.body,fontSize:"0.85rem"}}>Lacak pesanan →</button></div>
       </div>
     </div>
   );
 }
 
 function TrackPage({ setView }) {
-  const [q,setQ]=useState(""); const [res,setRes]=useState(null); const [notFound,setNF]=useState(false); const [searching,setSrch]=useState(false); const [tracking,setTrk]=useState(null); const [loadTrk,setLoadTrk]=useState(false);
+  const [q,setQ]=useState(""); const [res,setRes]=useState(null); const [notFound,setNF]=useState(false); const [searching,setSrch]=useState(false); const [tracking,setTrk]=useState(null); const [loadTrk,setLT]=useState(false);
   const doSearch=async()=>{ if(!q.trim())return; setSrch(true);setRes(null);setNF(false);setTrk(null); const{data}=await supabase.from("orders").select("*").eq("id",q.trim().toUpperCase()).maybeSingle(); if(data)setRes(mapOrder(data));else setNF(true); setSrch(false); };
-  const fetchResi=async()=>{ setLoadTrk(true); await new Promise(r=>setTimeout(r,1800)); setTrk([{time:"08:00",info:"Paket diterima di gudang pengirim",loc:res?.form?.f?.city||"Jakarta"},{time:"12:30",info:"Paket dalam proses sortir di hub",loc:"Hub "+(res?.courier||"Kurir")},{time:"15:45",info:"Paket dalam perjalanan ke kota tujuan",loc:"Dalam Pengiriman"},{time:"18:00",info:"Paket tiba di gudang kota tujuan",loc:res?.form?.f?.city||"Kota Tujuan"}]); setLoadTrk(false); };
+  const fetchResi=async()=>{ setLT(true);await new Promise(r=>setTimeout(r,1800));setTrk([{time:"08:00",info:"Paket diterima di gudang pengirim",loc:res?.form?.f?.city||"Jakarta"},{time:"12:30",info:"Paket dalam proses sortir",loc:"Hub "+(res?.courier||"Kurir")},{time:"15:45",info:"Paket dalam perjalanan",loc:"Dalam Pengiriman"},{time:"18:00",info:"Paket tiba di kota tujuan",loc:res?.form?.f?.city||"Tujuan"}]);setLT(false); };
   return (
     <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
-      <nav style={{background:"#fff",borderBottom:`3px solid ${C.yellow}`,padding:"12px 20px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:100}}>
-        <button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.2rem",color:C.orange}}>←</button>
-        <span style={{fontFamily:FF.display,fontSize:"1.3rem",color:C.text}}>🔍 Lacak Pesanan</span>
-      </nav>
+      <nav style={{background:"#fff",borderBottom:`3px solid ${C.yellow}`,padding:"12px 20px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:100}}><button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.2rem",color:C.orange}}>←</button><span style={{fontFamily:FF.display,fontSize:"1.3rem",color:C.text}}>🔍 Lacak Pesanan</span></nav>
       <div style={{maxWidth:600,margin:"0 auto",padding:"32px 20px"}}>
-        <div style={{textAlign:"center",marginBottom:28}}><div style={{fontSize:"4rem",marginBottom:8}}>📦</div><h2 style={{fontFamily:FF.display,color:C.text,margin:"0 0 6px"}}>Cek Status Pesananmu</h2><p style={{color:C.muted,fontSize:"0.9rem"}}>Masukkan ID pesanan yang kamu terima setelah checkout</p></div>
-        <div style={{display:"flex",gap:8,marginBottom:24}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSearch()} placeholder="Contoh: BKA1B2C3D4" style={{flex:1,padding:"13px 18px",borderRadius:20,border:`2px solid ${C.border}`,fontSize:"0.95rem",fontFamily:FF.body,outline:"none"}}/>
-          <button onClick={doSearch} disabled={searching} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"13px 22px",fontFamily:FF.display,cursor:"pointer",fontSize:"0.95rem"}}>{searching?"⏳":"Lacak"}</button>
-        </div>
+        <div style={{textAlign:"center",marginBottom:28}}><div style={{fontSize:"4rem",marginBottom:8}}>📦</div><h2 style={{fontFamily:FF.display,color:C.text,margin:"0 0 6px"}}>Cek Status Pesananmu</h2><p style={{color:C.muted,fontSize:"0.9rem"}}>Masukkan ID pesanan yang diterima setelah checkout</p></div>
+        <div style={{display:"flex",gap:8,marginBottom:24}}><input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSearch()} placeholder="Contoh: BKA1B2C3D4" style={{flex:1,padding:"13px 18px",borderRadius:20,border:`2px solid ${C.border}`,fontSize:"0.95rem",fontFamily:FF.body,outline:"none"}}/><button onClick={doSearch} disabled={searching} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"13px 22px",fontFamily:FF.display,cursor:"pointer"}}>{searching?"⏳":"Lacak"}</button></div>
         {notFound&&<div style={{textAlign:"center",color:C.muted,padding:28}}><div style={{fontSize:"3rem"}}>😕</div><p style={{fontFamily:FF.display,fontSize:"1.2rem"}}>Pesanan tidak ditemukan</p></div>}
         {res&&(<><div style={{background:"#fff",borderRadius:16,padding:"20px",border:`2px solid ${C.border}`,marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}><div><div style={{fontFamily:FF.display,fontSize:"1.15rem",color:C.text}}>{res.id}</div><div style={{fontSize:"0.8rem",color:C.muted}}>{res.form?.f?.name} · {new Date(res.date).toLocaleDateString("id-ID",{dateStyle:"long"})}</div></div><StatusPill s={res.status}/></div>
-          {STATUSES.map((s,i)=>{ const cur=STATUSES.indexOf(res.status);const done=i<=cur; return(<div key={s} style={{display:"flex",gap:12}}><div style={{display:"flex",flexDirection:"column",alignItems:"center"}}><div style={{width:24,height:24,borderRadius:"50%",background:done?C.orange:C.border,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{done&&<span style={{color:"#fff",fontSize:"0.72rem"}}>✓</span>}</div>{i<STATUSES.length-1&&<div style={{width:2,height:28,background:done&&i<cur?C.orange:C.border}}/>}</div><div style={{paddingBottom:i<STATUSES.length-1?18:0,paddingTop:3,display:"flex",alignItems:"flex-start"}}><span style={{fontSize:"0.87rem",fontWeight:done?800:400,color:done?C.text:C.muted}}>{s}</span>{i===cur&&<span style={{background:C.poBg,color:C.po,fontSize:"0.7rem",fontWeight:800,borderRadius:6,padding:"1px 6px",marginLeft:8}}>Sekarang</span>}</div></div>); })}
-          {res.resi&&<div style={{background:C.poBg,borderRadius:10,padding:"12px 14px",marginTop:14}}><div style={{fontSize:"0.8rem",color:C.muted,marginBottom:4}}>Nomor Resi</div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><span style={{fontFamily:FF.display,fontSize:"1.05rem",color:C.orange}}>{res.resi}</span><span style={{fontSize:"0.78rem",color:C.muted,marginLeft:8}}>via {res.courier||"—"}</span></div><button onClick={fetchResi} style={{background:C.orange,color:"#fff",border:"none",borderRadius:16,padding:"6px 14px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.8rem"}}>{loadTrk?"⏳ Memuat...":"🔍 Lacak Resi"}</button></div></div>}
+          {STATUSES.map((s,i)=>{ const cur=STATUSES.indexOf(res.status);const done=i<=cur;return(<div key={s} style={{display:"flex",gap:12}}><div style={{display:"flex",flexDirection:"column",alignItems:"center"}}><div style={{width:24,height:24,borderRadius:"50%",background:done?C.orange:C.border,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{done&&<span style={{color:"#fff",fontSize:"0.72rem"}}>✓</span>}</div>{i<STATUSES.length-1&&<div style={{width:2,height:28,background:done&&i<cur?C.orange:C.border}}/>}</div><div style={{paddingBottom:i<STATUSES.length-1?18:0,paddingTop:3,display:"flex",alignItems:"flex-start"}}><span style={{fontSize:"0.87rem",fontWeight:done?800:400,color:done?C.text:C.muted}}>{s}</span>{i===cur&&<span style={{background:C.poBg,color:C.po,fontSize:"0.7rem",fontWeight:800,borderRadius:6,padding:"1px 6px",marginLeft:8}}>Sekarang</span>}</div></div>);})}
+          {res.resi&&<div style={{background:C.poBg,borderRadius:10,padding:"12px 14px",marginTop:14}}><div style={{fontSize:"0.8rem",color:C.muted,marginBottom:4}}>Nomor Resi</div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><span style={{fontFamily:FF.display,fontSize:"1.05rem",color:C.orange}}>{res.resi}</span><span style={{fontSize:"0.78rem",color:C.muted,marginLeft:8}}>via {res.courier||"—"}</span></div><button onClick={fetchResi} style={{background:C.orange,color:"#fff",border:"none",borderRadius:16,padding:"6px 14px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.8rem"}}>{loadTrk?"⏳":"🔍 Lacak"}</button></div></div>}
         </div>
         {tracking&&<div style={{background:"#fff",borderRadius:16,padding:"20px",border:`2px solid ${C.border}`}}><h4 style={{fontFamily:FF.display,color:C.text,margin:"0 0 16px"}}>📍 Riwayat Pengiriman</h4>{tracking.map((t,i)=>(<div key={i} style={{display:"flex",gap:12}}><div style={{display:"flex",flexDirection:"column",alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:i===tracking.length-1?C.orange:C.border,flexShrink:0,marginTop:4}}/>{i<tracking.length-1&&<div style={{width:1,height:34,background:C.border}}/>}</div><div style={{paddingBottom:i<tracking.length-1?18:0}}><div style={{fontSize:"0.87rem",fontWeight:700,color:C.text}}>{t.info}</div><div style={{fontSize:"0.76rem",color:C.muted}}>{t.loc} · {t.time}</div></div></div>))}</div>}
         </>)}
@@ -299,60 +422,94 @@ function TrackPage({ setView }) {
   );
 }
 
-// ─── EDIT PRODUCT MODAL ───────────────────────────────────────────────────────
-function EditModal({ prod, onClose, onSave }) {
-  const [ep,setEP] = useState({
-    name:prod.name||"", desc:prod.description||prod.desc||"", price:prod.price||"",
-    status:prod.status||"ready", deadline:prod.deadline?new Date(prod.deadline).toISOString().slice(0,16):"",
-    category:prod.category||"", origin:prod.origin||"", emoji:prod.emoji||"📗",
-    pages:prod.pages||"", age:prod.age||"", weight:prod.weight||"", stock:prod.stock||"",
+// ─── PRODUCT FORM (shared Add & Edit) ─────────────────────────────────────────
+function ProductForm({ initial, onSave, onCancel, title }) {
+  const isEdit = !!initial?.id;
+  const [f,setF] = useState({
+    name:initial?.name||"", desc:initial?.description||initial?.desc||"",
+    price:initial?.price||"", status:initial?.status||"ready",
+    deadline:initial?.deadline?new Date(initial.deadline).toISOString().slice(0,16):"",
+    category:initial?.category||"", origin:initial?.origin||"Jakarta",
+    emoji:initial?.emoji||"📗", pages:initial?.pages||"",
+    age:initial?.age||"", weight:initial?.weight||"", stock:initial?.stock||"",
   });
-  const set=(k,v)=>setEP(x=>({...x,[k]:v}));
-  const save=async()=>{
-    if(!ep.name||!ep.price)return alert("Nama dan harga wajib diisi");
-    const{error}=await supabase.from("products").update({
-      name:ep.name, description:ep.desc, price:parseInt(ep.price),
-      status:ep.status, deadline:ep.status==="preorder"&&ep.deadline?new Date(ep.deadline).toISOString():null,
-      category:ep.category, origin:ep.origin, emoji:ep.emoji||"📗",
-      pages:parseInt(ep.pages)||null, age:ep.age, weight:ep.weight,
-      stock:ep.status==="ready"?(parseInt(ep.stock)||null):null,
-    }).eq("id",prod.id);
-    if(error)return alert("Gagal menyimpan: "+error.message);
-    onSave(); onClose();
+  const [images,setImages]     = useState(initial?.preview_images||[]);
+  const [uploading,setUploading] = useState(false);
+  const [saving,setSaving]     = useState(false);
+  const set = (k,v)=>setF(x=>({...x,[k]:v}));
+
+  const save = async () => {
+    if(!f.name||!f.price) return alert("Nama dan harga wajib diisi");
+    setSaving(true);
+    const payload = {
+      name:f.name, description:f.desc, price:parseInt(f.price),
+      status:f.status, deadline:f.status==="preorder"&&f.deadline?new Date(f.deadline).toISOString():null,
+      category:f.category, origin:f.origin, emoji:f.emoji||"📗",
+      pages:parseInt(f.pages)||null, age:f.age, weight:f.weight,
+      stock:f.status==="ready"?(parseInt(f.stock)||null):null,
+      preview_images: images,
+    };
+    let error;
+    if (isEdit) { ({error} = await supabase.from("products").update(payload).eq("id",initial.id)); }
+    else { ({error} = await supabase.from("products").insert([payload])); }
+    setSaving(false);
+    if(error) return alert("Gagal menyimpan: "+error.message);
+    onSave();
   };
-  const inp=(k,label,type="text",ph="")=>(<div style={{marginBottom:10}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>{label}</label><input type={type} placeholder={ph} value={ep[k]} onChange={e=>set(k,e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",outline:"none"}}/></div>);
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{background:"#fff",borderRadius:20,padding:"24px",width:"100%",maxWidth:560,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <h3 style={{fontFamily:FF.display,color:C.text,margin:0,fontSize:"1.2rem"}}>✏️ Edit Produk</h3>
-          <button onClick={onClose} style={{background:"#f5f5f5",border:"none",borderRadius:"50%",width:32,height:32,cursor:"pointer",fontSize:"1rem",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
-          <div style={{gridColumn:"1/-1"}}>{inp("name","Nama Buku *","text","Judul buku...")}</div>
-          {inp("emoji","Emoji Cover","text","📗")}
-          {inp("price","Harga (Rp) *","number","75000")}
-          {inp("category","Kategori","text","Petualangan")}
-          {inp("origin","Asal Pengiriman","text","Jakarta")}
-          {inp("age","Usia Pembaca","text","5–9 tahun")}
-          {inp("pages","Jumlah Halaman","number","100")}
-          {inp("weight","Berat","text","300g")}
-        </div>
-        <div style={{marginBottom:10}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Deskripsi</label><textarea value={ep.desc} onChange={e=>set("desc",e.target.value)} rows={3} placeholder="Deskripsi buku..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",resize:"none",outline:"none"}}/></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-          <div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Status</label>
-            <select value={ep.status} onChange={e=>set("status",e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem"}}>
-              <option value="ready">✅ Ready Stock</option><option value="preorder">⏳ Pre-Order</option>
-            </select>
-          </div>
-          {ep.status==="ready"&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Stok</label><input type="number" value={ep.stock} onChange={e=>set("stock",e.target.value)} placeholder="0" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
-          {ep.status==="preorder"&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Deadline Pre-Order</label><input type="datetime-local" value={ep.deadline} onChange={e=>set("deadline",e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
-        </div>
-        <div style={{display:"flex",gap:10}}>
-          <button onClick={onClose} style={{flex:1,background:"#f5f5f5",color:C.muted,border:"none",borderRadius:16,padding:"12px",fontFamily:FF.display,fontSize:"1rem",cursor:"pointer"}}>Batal</button>
-          <button onClick={save} style={{flex:2,background:C.orange,color:"#fff",border:"none",borderRadius:16,padding:"12px",fontFamily:FF.display,fontSize:"1rem",cursor:"pointer"}}>💾 Simpan Perubahan</button>
-        </div>
+
+  const inp=(k,label,type="text",ph="",full=false)=>(<div style={{marginBottom:10,gridColumn:full?"1/-1":undefined}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>{label}</label><input type={type} placeholder={ph} value={f[k]} onChange={e=>set(k,e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",outline:"none"}}/></div>);
+
+  const formContent = (
+    <>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
+        {inp("name","Nama Buku *","text","Judul buku...",true)}
+        {inp("emoji","Emoji Cover","text","📗")}
+        {inp("price","Harga (Rp) *","number","75000")}
+        {inp("category","Kategori","text","Petualangan")}
+        {inp("origin","Asal Pengiriman","text","Jakarta")}
+        {inp("age","Usia Pembaca","text","5–9 tahun")}
+        {inp("pages","Jumlah Halaman","number","100")}
+        {inp("weight","Berat","text","300g")}
       </div>
+      <div style={{marginBottom:10}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Deskripsi</label><textarea value={f.desc} onChange={e=>set("desc",e.target.value)} rows={3} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",resize:"none",outline:"none"}}/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+        <div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Status</label>
+          <select value={f.status} onChange={e=>set("status",e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem"}}>
+            <option value="ready">✅ Ready Stock</option><option value="preorder">⏳ Pre-Order</option>
+          </select>
+        </div>
+        {f.status==="ready"&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Stok</label><input type="number" value={f.stock} onChange={e=>set("stock",e.target.value)} placeholder="0" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
+        {f.status==="preorder"&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Deadline</label><input type="datetime-local" value={f.deadline} onChange={e=>set("deadline",e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
+      </div>
+      {/* Image Uploader */}
+      <div style={{background:C.bg,borderRadius:12,padding:"14px",marginBottom:16,border:`2px solid ${C.border}`}}>
+        <ImageUploader images={images} setImages={setImages} productId={initial?.id||null} uploading={uploading} setUploading={setUploading}/>
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        {onCancel&&<button onClick={onCancel} style={{flex:1,background:"#f5f5f5",color:C.muted,border:"none",borderRadius:16,padding:"12px",fontFamily:FF.display,fontSize:"1rem",cursor:"pointer"}}>Batal</button>}
+        <button onClick={save} disabled={saving||uploading} style={{flex:2,background:saving||uploading?"#ccc":C.orange,color:"#fff",border:"none",borderRadius:16,padding:"12px",fontFamily:FF.display,fontSize:"1rem",cursor:saving||uploading?"not-allowed":"pointer"}}>{saving?"⏳ Menyimpan...":uploading?"⏳ Mengupload...":isEdit?"💾 Simpan Perubahan":"➕ Tambahkan Produk"}</button>
+      </div>
+    </>
+  );
+
+  // Modal mode (edit)
+  if (isEdit) return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:20,padding:"24px",width:"100%",maxWidth:580,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <h3 style={{fontFamily:FF.display,color:C.text,margin:0,fontSize:"1.2rem"}}>{title||"✏️ Edit Produk"}</h3>
+          <button onClick={onCancel} style={{background:"#f5f5f5",border:"none",borderRadius:"50%",width:32,height:32,cursor:"pointer",fontSize:"1rem"}}>✕</button>
+        </div>
+        {formContent}
+      </div>
+    </div>
+  );
+
+  // Inline mode (add)
+  return (
+    <div style={{maxWidth:640,background:"#fff",borderRadius:16,padding:"24px",border:`2px solid ${C.border}`}}>
+      <h3 style={{fontFamily:FF.display,color:C.text,margin:"0 0 20px"}}>{title||"➕ Tambah Produk Baru"}</h3>
+      {formContent}
     </div>
   );
 }
@@ -360,16 +517,12 @@ function EditModal({ prod, onClose, onSave }) {
 function AdminPage({ products, fetchProducts, setView, auth, setAuth }) {
   const [pass,setPass]=useState(""); const [tab,setTab]=useState("orders");
   const [orders,setOrders]=useState([]); const [loadingOrd,setLO]=useState(false);
-  const [np,setNP]=useState({name:"",desc:"",price:"",status:"ready",deadline:"",category:"",origin:"Jakarta",emoji:"📗",pages:"",age:"",weight:"",stock:""});
-  const setnp=(k,v)=>setNP(x=>({...x,[k]:v}));
   const [editProd,setEditProd]=useState(null);
 
   useEffect(()=>{ if(auth)loadOrders(); },[auth]);
-
-  const loadOrders=async()=>{ setLO(true); const{data}=await supabase.from("orders").select("*").order("created_at",{ascending:false}); if(data)setOrders(data.map(mapOrder)); setLO(false); };
-  const updOrder=async(id,updates)=>{ const db={}; if(updates.status!==undefined)db.status=updates.status; if(updates.courier!==undefined)db.courier=updates.courier; if(updates.resi!==undefined)db.resi=updates.resi; if(updates.ongkir!==undefined){const val=parseInt(updates.ongkir)||0;const ord=orders.find(o=>o.id===id);db.ongkir=val;db.total=(ord?.sub||0)+val;updates.total=db.total;} await supabase.from("orders").update(db).eq("id",id); setOrders(prev=>prev.map(o=>o.id===id?{...o,...updates}:o)); };
-  const delProd=async(id)=>{ if(!window.confirm("Hapus produk ini?"))return; await supabase.from("products").delete().eq("id",id); fetchProducts(); };
-  const addProd=async()=>{ if(!np.name||!np.price)return alert("Nama dan harga wajib diisi"); const{error}=await supabase.from("products").insert([{name:np.name,description:np.desc,price:parseInt(np.price),status:np.status,deadline:np.status==="preorder"&&np.deadline?new Date(np.deadline).toISOString():null,category:np.category,origin:np.origin,emoji:np.emoji||"📗",pages:parseInt(np.pages)||null,age:np.age,weight:np.weight,stock:np.status==="ready"?(parseInt(np.stock)||null):null}]); if(error)return alert("Gagal: "+error.message); fetchProducts(); setNP({name:"",desc:"",price:"",status:"ready",deadline:"",category:"",origin:"Jakarta",emoji:"📗",pages:"",age:"",weight:"",stock:""}); alert("✅ Produk berhasil ditambahkan!"); };
+  const loadOrders=async()=>{ setLO(true);const{data}=await supabase.from("orders").select("*").order("created_at",{ascending:false});if(data)setOrders(data.map(mapOrder));setLO(false); };
+  const updOrder=async(id,updates)=>{ const db={};if(updates.status!==undefined)db.status=updates.status;if(updates.courier!==undefined)db.courier=updates.courier;if(updates.resi!==undefined)db.resi=updates.resi;if(updates.ongkir!==undefined){const val=parseInt(updates.ongkir)||0;const ord=orders.find(o=>o.id===id);db.ongkir=val;db.total=(ord?.sub||0)+val;updates.total=db.total;}await supabase.from("orders").update(db).eq("id",id);setOrders(prev=>prev.map(o=>o.id===id?{...o,...updates}:o)); };
+  const delProd=async(id)=>{ if(!window.confirm("Hapus produk ini?"))return;await supabase.from("products").delete().eq("id",id);fetchProducts(); };
 
   if(!auth) return (
     <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -389,11 +542,11 @@ function AdminPage({ products, fetchProducts, setView, auth, setAuth }) {
 
   return (
     <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
-      {editProd&&<EditModal prod={editProd} onClose={()=>setEditProd(null)} onSave={()=>{fetchProducts();setEditProd(null);}}/>}
+      {editProd&&<ProductForm initial={editProd} title="✏️ Edit Produk" onSave={()=>{fetchProducts();setEditProd(null);}} onCancel={()=>setEditProd(null)}/>}
       <nav style={{background:C.orange,padding:"13px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:"1.3rem"}}>📚</span><span style={{fontFamily:FF.display,fontSize:"1.3rem",color:"#fff"}}>BukuKiddo Admin</span></div>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={loadOrders} style={{background:"rgba(255,255,255,0.2)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.85rem"}}>🔄 Refresh</button>
+          <button onClick={loadOrders} style={{background:"rgba(255,255,255,0.2)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.85rem"}}>🔄</button>
           <button onClick={()=>setView("home")} style={{background:"rgba(255,255,255,0.2)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.85rem"}}>🏠 Toko</button>
           <button onClick={()=>setAuth(false)} style={{background:"transparent",color:"#fff",border:"2px solid rgba(255,255,255,0.5)",borderRadius:20,padding:"7px 16px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.85rem"}}>Logout</button>
         </div>
@@ -406,7 +559,7 @@ function AdminPage({ products, fetchProducts, setView, auth, setAuth }) {
       </div>
       <div style={{padding:"16px 20px 48px"}}>
         {/* ORDERS */}
-        {tab==="orders"&&(loadingOrd?(<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"3rem"}}>⏳</div><p style={{fontFamily:FF.display,fontSize:"1.2rem",marginTop:12}}>Memuat pesanan...</p></div>):orders.length===0?(<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"4rem"}}>📭</div><p style={{fontFamily:FF.display,fontSize:"1.3rem"}}>Belum ada pesanan masuk</p></div>):orders.map(ord=>{
+        {tab==="orders"&&(loadingOrd?<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"3rem"}}>⏳</div><p style={{fontFamily:FF.display,fontSize:"1.2rem",marginTop:12}}>Memuat...</p></div>:orders.length===0?<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"4rem"}}>📭</div><p style={{fontFamily:FF.display,fontSize:"1.3rem"}}>Belum ada pesanan</p></div>:orders.map(ord=>{
           const buyerPhone=(ord.form?.f?.phone||"").replace(/^0/,"62").replace(/\D/g,"");
           const waUpdate=encodeURIComponent(`Halo ${ord.form?.f?.name}! 👋\n\nUpdate pesanan BukuKiddo:\n📦 ID: ${ord.id}\n📊 Status: ${ord.status}${ord.courier?`\n🚚 Kurir: ${ord.courier}`:""}${ord.resi?`\n📋 Resi: ${ord.resi}`:""}\n\nTerima kasih! 📚`);
           return (<div key={ord.id} style={{background:"#fff",borderRadius:16,padding:"20px",marginBottom:14,border:`2px solid ${C.border}`}}>
@@ -421,7 +574,7 @@ function AdminPage({ products, fetchProducts, setView, auth, setAuth }) {
                 <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.orange,fontSize:"0.9rem"}}><span>Total</span><span>{fmt(ord.total)}</span></div>
               </div>
             </div>
-            <div style={{fontSize:"0.8rem",color:C.muted,marginBottom:10}}>💳 {ord.form?.f?.payment==="transfer"?"Transfer Bank":"QRIS"} · 🚚 Kurir: <strong>{ord.courier||<span style={{color:C.warn}}>Belum ditentukan</span>}</strong> · 📍 {ord.form?.f?.address}, {ord.form?.f?.city}</div>
+            <div style={{fontSize:"0.8rem",color:C.muted,marginBottom:10}}>💳 {ord.form?.f?.payment==="transfer"?"Transfer Bank":"QRIS"} · Kurir: <strong>{ord.courier||"—"}</strong> · 📍 {ord.form?.f?.address}, {ord.form?.f?.city}</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               <select value={ord.status} onChange={e=>updOrder(ord.id,{status:e.target.value})} style={{padding:"8px 12px",borderRadius:10,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.85rem",cursor:"pointer",background:"#fff"}}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>
               <select value={ord.courier||""} onChange={e=>updOrder(ord.id,{courier:e.target.value})} style={{padding:"8px 12px",borderRadius:10,border:`2px solid ${ord.courier?C.border:C.warn}`,fontFamily:FF.body,fontSize:"0.85rem",cursor:"pointer",background:ord.courier?"#fff":"#FFFBF0"}}><option value="">🚚 Pilih Kurir...</option>{COURIERS.map(c=><option key={c}>{c}</option>)}</select>
@@ -434,35 +587,28 @@ function AdminPage({ products, fetchProducts, setView, auth, setAuth }) {
         {/* PRODUCTS */}
         {tab==="products"&&(<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>
           {products.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"4rem"}}>📭</div><p style={{fontFamily:FF.display,fontSize:"1.2rem",marginTop:12}}>Belum ada produk</p></div>}
-          {products.map(p=>(<div key={p.id} style={{background:"#fff",borderRadius:14,padding:"16px",border:`2px solid ${C.border}`}}>
-            <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:10}}>
-              <div style={{fontSize:"2.4rem",background:C.poBg,borderRadius:10,padding:"8px",lineHeight:1,flexShrink:0}}>{p.emoji||"📗"}</div>
-              <div style={{flex:1}}><div style={{fontFamily:FF.display,fontSize:"0.92rem",color:C.text,lineHeight:1.3,marginBottom:4}}>{p.name}</div><Badge type={p.status}/></div>
-            </div>
-            <p style={{fontSize:"0.8rem",color:C.muted,margin:"0 0 10px",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.desc||p.description||"-"}</p>
-            <div style={{fontFamily:FF.display,fontSize:"1.1rem",color:C.orange,marginBottom:10}}>{fmt(p.price)}</div>
-            {p.status==="preorder"&&p.deadline&&<div style={{fontSize:"0.73rem",color:C.po,marginBottom:8}}>Deadline: {new Date(p.deadline).toLocaleDateString("id-ID",{dateStyle:"medium"})}</div>}
-            {p.status==="ready"&&<div style={{fontSize:"0.73rem",color:C.muted,marginBottom:8}}>Stok: {p.stock||"∞"} · {p.origin||""}</div>}
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setEditProd(p)} style={{flex:1,background:C.poBg,color:C.orange,border:`1.5px solid ${C.orange}`,borderRadius:10,padding:"7px 12px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>✏️ Edit</button>
-              <button onClick={()=>delProd(p.id)} style={{flex:1,background:"#fff0f0",color:"#e74c3c",border:"1.5px solid #fcc",borderRadius:10,padding:"7px 12px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>🗑️ Hapus</button>
-            </div>
-          </div>))}
+          {products.map(p=>{
+            const cover=p.preview_images&&p.preview_images.length>0?p.preview_images[0]:null;
+            return (<div key={p.id} style={{background:"#fff",borderRadius:14,padding:0,border:`2px solid ${C.border}`,overflow:"hidden"}}>
+              <div style={{height:140,background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {cover?<img src={cover} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:"4rem"}}>{p.emoji||"📗"}</span>}
+                <div style={{position:"absolute",top:8,left:8}}><Badge type={p.status}/></div>
+                {p.preview_images&&p.preview_images.length>0&&<div style={{position:"absolute",bottom:8,right:8,background:"rgba(0,0,0,0.5)",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:"0.68rem",fontWeight:700}}>📸 {p.preview_images.length}</div>}
+              </div>
+              <div style={{padding:"12px 14px"}}>
+                <div style={{fontFamily:FF.display,fontSize:"0.92rem",color:C.text,marginBottom:4}}>{p.name}</div>
+                <p style={{fontSize:"0.78rem",color:C.muted,margin:"0 0 8px",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.desc||p.description||"-"}</p>
+                <div style={{fontFamily:FF.display,fontSize:"1.05rem",color:C.orange,marginBottom:10}}>{fmt(p.price)}</div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setEditProd(p)} style={{flex:1,background:C.poBg,color:C.orange,border:`1.5px solid ${C.orange}`,borderRadius:10,padding:"7px 12px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>✏️ Edit</button>
+                  <button onClick={()=>delProd(p.id)} style={{flex:1,background:"#fff0f0",color:"#e74c3c",border:"1.5px solid #fcc",borderRadius:10,padding:"7px 12px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>🗑️ Hapus</button>
+                </div>
+              </div>
+            </div>);
+          })}
         </div>)}
-        {/* ADD PRODUCT */}
-        {tab==="add"&&(<div style={{maxWidth:640,background:"#fff",borderRadius:16,padding:"24px",border:`2px solid ${C.border}`}}>
-          <h3 style={{fontFamily:FF.display,color:C.text,margin:"0 0 20px"}}>➕ Tambah Produk Baru</h3>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            {[["name","Nama Buku *","text","Judul buku..."],["emoji","Emoji Cover","text","📗"],["price","Harga (Rp) *","number","75000"],["category","Kategori","text","Petualangan"],["origin","Asal Pengiriman","text","Jakarta"],["age","Usia Pembaca","text","5–9 tahun"],["pages","Jumlah Halaman","number","100"],["weight","Berat","text","300g"]].map(([k,l,type,ph])=>(<div key={k} style={{gridColumn:k==="name"?"1/-1":undefined}}><label style={{display:"block",fontSize:"0.8rem",fontWeight:700,color:C.text,marginBottom:4}}>{l}</label><input type={type} placeholder={ph} value={np[k]} onChange={e=>setnp(k,e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",outline:"none"}}/></div>))}
-          </div>
-          <div style={{marginTop:12}}><label style={{display:"block",fontSize:"0.8rem",fontWeight:700,color:C.text,marginBottom:4}}>Deskripsi</label><textarea value={np.desc} onChange={e=>setnp("desc",e.target.value)} rows={3} placeholder="Deskripsi singkat buku..." style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",resize:"none",outline:"none"}}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:12}}>
-            <div><label style={{display:"block",fontSize:"0.8rem",fontWeight:700,color:C.text,marginBottom:4}}>Status</label><select value={np.status} onChange={e=>setnp("status",e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem"}}><option value="ready">✅ Ready Stock</option><option value="preorder">⏳ Pre-Order</option></select></div>
-            {np.status==="ready"&&<div><label style={{display:"block",fontSize:"0.8rem",fontWeight:700,color:C.text,marginBottom:4}}>Jumlah Stok</label><input type="number" value={np.stock} onChange={e=>setnp("stock",e.target.value)} placeholder="0" style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
-            {np.status==="preorder"&&<div><label style={{display:"block",fontSize:"0.8rem",fontWeight:700,color:C.text,marginBottom:4}}>Deadline Pre-Order</label><input type="datetime-local" value={np.deadline} onChange={e=>setnp("deadline",e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
-          </div>
-          <button onClick={addProd} style={{width:"100%",background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"14px",fontFamily:FF.display,fontSize:"1.1rem",cursor:"pointer",marginTop:20}}>➕ Tambahkan Produk</button>
-        </div>)}
+        {/* ADD */}
+        {tab==="add"&&<ProductForm title="➕ Tambah Produk Baru" onSave={()=>{fetchProducts();alert("✅ Produk berhasil ditambahkan!");}}/>}
       </div>
     </div>
   );
@@ -473,9 +619,9 @@ export default function App() {
   const [cart,setCart]=useState([]); const [selected,setSelected]=useState(null); const [currentOrder,setCurOrd]=useState(null);
   const [auth,setAuth]=useState(false); const [filter,setFilter]=useState("all"); const [search,setSearch]=useState("");
   useEffect(()=>{fetchProducts();},[]);
-  const fetchProducts=async()=>{ setLoading(true); const{data}=await supabase.from("products").select("*").order("created_at",{ascending:false}); if(data)setProducts(data.map(mapProduct)); setLoading(false); };
+  const fetchProducts=async()=>{ setLoading(true);const{data}=await supabase.from("products").select("*").order("created_at",{ascending:false});if(data)setProducts(data.map(mapProduct));setLoading(false); };
   const addToCart=(product,qty)=>setCart(c=>{const ex=c.find(i=>i.product.id===product.id);return ex?c.map(i=>i.product.id===product.id?{...i,qty:i.qty+qty}:i):[...c,{product,qty}];});
-  const placeOrder=async({f,cart,sub,total})=>{ const id=genId(); const payload={id,buyer_name:f.name,buyer_phone:f.phone,buyer_address:f.address,buyer_city:f.city,payment:f.payment,notes:f.notes,cart,sub,ongkir:0,total,status:"Menunggu Pembayaran"}; const{error}=await supabase.from("orders").insert([payload]); if(error){alert("Gagal membuat pesanan: "+error.message);return;} setCurOrd(mapOrder({...payload,created_at:new Date().toISOString()})); setCart([]); setView("payment"); };
+  const placeOrder=async({f,cart,sub,total})=>{ const id=genId();const payload={id,buyer_name:f.name,buyer_phone:f.phone,buyer_address:f.address,buyer_city:f.city,payment:f.payment,notes:f.notes,cart,sub,ongkir:0,total,status:"Menunggu Pembayaran"};const{error}=await supabase.from("orders").insert([payload]);if(error){alert("Gagal: "+error.message);return;}setCurOrd(mapOrder({...payload,created_at:new Date().toISOString()}));setCart([]);setView("payment"); };
   const cartCount=cart.reduce((s,i)=>s+i.qty,0);
   return (<>
     {view==="home"&&<HomePage products={products} loading={loading} cart={cart} setView={setView} setSelected={setSelected} filter={filter} setFilter={setFilter} search={search} setSearch={setSearch}/>}
