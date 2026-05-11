@@ -346,23 +346,36 @@ function PaymentPage({ order, setView, qrisUrl }) {
           <div style={{fontSize:"0.78rem",opacity:0.8,marginTop:6}}>📌 Simpan ID ini untuk melacak pesananmu</div>
         </div>
 
+
         {isTransfer?(
           <>
-            <Card title={`🏦 Transfer ke ${f.bank_name||"Bank"}`}>
+            {/* STEP 1 - Rekening Tujuan */}
+            <Card title={`🏦 Rekening Tujuan — ${f.bank_name||"Bank"}`}>
               <div style={{textAlign:"center",background:C.poBg,borderRadius:12,padding:"18px",marginBottom:14}}>
                 <div style={{fontSize:"2.5rem",marginBottom:4}}>{f.bank_logo||"🏦"}</div>
                 <div style={{fontFamily:FF.display,fontSize:"1.8rem",color:C.orange}}>{f.bank_name}</div>
                 <div style={{fontSize:"1.5rem",fontWeight:900,letterSpacing:3,color:C.text,margin:"6px 0"}}>{f.bank_number}</div>
                 <div style={{color:C.muted,fontSize:"0.88rem"}}>a.n. <strong>{f.bank_account_name}</strong></div>
               </div>
-              <div style={{background:"#fff",border:`2px solid ${C.orange}`,borderRadius:12,padding:"14px",textAlign:"center"}}>
-                <div style={{fontSize:"0.83rem",color:C.muted,marginBottom:4}}>Total yang harus ditransfer</div>
-                <div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange}}>{fmt(order.total)}</div>
-                <div style={{fontSize:"0.75rem",color:C.po,marginTop:4}}>⚠️ Transfer tepat sesuai nominal untuk mempercepat konfirmasi</div>
+              {/* Rincian Harga */}
+              <div style={{background:"#fff",border:`2px solid ${C.border}`,borderRadius:12,padding:"14px",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:"0.88rem"}}><span style={{color:C.muted}}>Subtotal produk</span><span style={{fontWeight:700,color:C.text}}>{fmt(order.sub||order.total)}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:10,fontSize:"0.88rem"}}><span style={{color:C.muted}}>Ongkos kirim</span><span style={{fontWeight:700,color:C.warn}}>⏳ Menunggu konfirmasi</span></div>
+                <div style={{borderTop:`2px dashed ${C.border}`,paddingTop:10,display:"flex",justifyContent:"space-between"}}><span style={{fontFamily:FF.display,fontSize:"1rem",color:C.text}}>Total Akhir</span><span style={{fontFamily:FF.display,fontSize:"1rem",color:C.warn}}>Menunggu konfirmasi</span></div>
+              </div>
+              {/* Warning - Jangan Transfer Dulu */}
+              <div style={{background:"#FFF8E1",border:"2.5px solid #F59E0B",borderRadius:12,padding:"14px 16px"}}>
+                <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <span style={{fontSize:"1.5rem",flexShrink:0}}>⚠️</span>
+                  <div>
+                    <p style={{margin:"0 0 6px",fontWeight:800,color:"#92400E",fontSize:"0.92rem"}}>Jangan transfer dulu!</p>
+                    <p style={{margin:0,fontSize:"0.82rem",color:"#78350F",lineHeight:1.6}}>Admin akan menghubungi kamu via WhatsApp untuk konfirmasi <strong>ongkos kirim</strong> dan <strong>total akhir</strong> yang harus ditransfer. Harap tunggu pesan dari kami ya! 🙏</p>
+                  </div>
+                </div>
               </div>
             </Card>
             <Card title="📤 Konfirmasi Pembayaran">
-              <p style={{fontSize:"0.85rem",color:C.muted,margin:"0 0 12px"}}>Setelah transfer, konfirmasi via WhatsApp atau upload bukti bayar.</p>
+              <p style={{fontSize:"0.85rem",color:C.muted,margin:"0 0 12px"}}>Setelah menerima konfirmasi total dari admin dan sudah transfer, upload bukti bayar di sini.</p>
               <a href={`https://wa.me/${WA}?text=${waMsg}`} target="_blank" rel="noreferrer" style={{display:"block",background:"#25D366",color:"#fff",borderRadius:20,padding:"14px",textAlign:"center",textDecoration:"none",fontFamily:FF.display,fontSize:"1.05rem",marginBottom:12}}>📱 Konfirmasi via WhatsApp</a>
               {!sent?(<div style={{border:`2px dashed ${C.border}`,borderRadius:12,padding:"20px",textAlign:"center",cursor:"pointer"}} onClick={()=>document.getElementById("pf").click()}><input id="pf" type="file" accept="image/*" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){setProof(URL.createObjectURL(e.target.files[0]));setSent(true);}}}/>{proof?<img src={proof} alt="bukti" style={{maxWidth:"100%",borderRadius:8}}/>:<><div style={{fontSize:"2rem",marginBottom:6}}>📎</div><p style={{color:C.muted,fontSize:"0.85rem",margin:0}}>Upload bukti transfer (JPG/PNG)</p></>}</div>
               ):(<div style={{background:C.rsBg,borderRadius:12,padding:"16px",textAlign:"center"}}><div style={{fontSize:"2rem"}}>✅</div><p style={{color:C.rs,fontWeight:800,margin:"4px 0"}}>Bukti Berhasil Diupload!</p><p style={{color:C.muted,fontSize:"0.8rem",margin:0}}>Admin memverifikasi dalam 1×24 jam</p></div>)}
@@ -626,7 +639,28 @@ function AdminPage({ products, fetchProducts, setView, auth, setAuth, banks, fet
         {/* ORDERS */}
         {tab==="orders"&&(loadingOrd?<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"3rem"}}>⏳</div><p style={{fontFamily:FF.display,fontSize:"1.2rem",marginTop:12}}>Memuat...</p></div>:orders.length===0?<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"4rem"}}>📭</div><p style={{fontFamily:FF.display,fontSize:"1.3rem"}}>Belum ada pesanan</p></div>:orders.map(ord=>{
           const buyerPhone=(ord.form?.f?.phone||"").replace(/^0/,"62").replace(/\D/g,"");
-          const waUpdate=encodeURIComponent(`Halo ${ord.form?.f?.name}! 👋\n\nUpdate pesanan BukuKiddo:\n📦 ID: ${ord.id}\n📊 Status: ${ord.status}${ord.courier?`\n🚚 Kurir: ${ord.courier}`:""}${ord.resi?`\n📋 Resi: ${ord.resi}`:""}\n\nTerima kasih! 📚`);
+          const hasOngkir = ord.ongkir && parseInt(ord.ongkir) > 0;
+          const waUpdate=encodeURIComponent(
+            `Halo ${ord.form?.f?.name}! 👋\n\n`+
+            `Update pesanan BukuKiddo kamu:\n`+
+            `📦 ID Pesanan: ${ord.id}\n`+
+            `📊 Status: ${ord.status}\n`+
+            (ord.courier?`🚚 Kurir: ${ord.courier}\n`:"")+
+            (ord.resi?`📋 Nomor Resi: ${ord.resi}\n`:"")+
+            (hasOngkir?
+              `\n💰 Rincian Pembayaran:\n`+
+              `   Subtotal produk : ${fmt(ord.sub||0)}\n`+
+              `   Ongkos kirim    : ${fmt(ord.ongkir)}\n`+
+              `   ─────────────────────\n`+
+              `   *Total akhir    : ${fmt(ord.total)}*\n\n`+
+              `🏦 Silakan transfer ke:\n`+
+              (ord.form?.f?.bank_name?`   Bank  : ${ord.form.f.bank_name}\n`:"")+
+              (ord.form?.f?.bank_number?`   No.Rek: ${ord.form.f.bank_number}\n`:"")+
+              (ord.form?.f?.bank_account_name?`   a.n.  : ${ord.form.f.bank_account_name}\n`:"")+
+              `\n⚠️ Transfer tepat sesuai nominal ya kak!\n`
+            :"")+
+            `\nTerima kasih sudah belanja di BukuKiddo! 📚`
+          );
           return (<div key={ord.id} style={{background:"#fff",borderRadius:16,padding:"20px",marginBottom:14,border:`2px solid ${C.border}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
               <div><div style={{fontFamily:FF.display,fontSize:"1.1rem",color:C.text}}>{ord.id}</div><div style={{fontSize:"0.8rem",color:C.muted}}>{ord.form?.f?.name} · {ord.form?.f?.phone} · {ord.form?.f?.city}</div><div style={{fontSize:"0.78rem",color:C.muted}}>{new Date(ord.date).toLocaleString("id-ID")}</div></div>
