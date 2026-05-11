@@ -21,6 +21,13 @@ const STATUSES   = ["Menunggu Pembayaran","Pembayaran Dikonfirmasi","Diproses","
 const WA         = "6281234567890";
 const ADMIN_PASS = "bukukiddo2025";
 const MAX_IMG    = 7;
+const COURIER_URLS = {
+  "JNE":           "https://www.jne.co.id/id/tracking/trace?awb=",
+  "J&T Express":   "https://jet.co.id/track?awb=",
+  "SiCepat":       "https://sicepat.com/checkAwb?awb=",
+  "Anteraja":      "https://anteraja.id/tracking?awb=",
+  "Ninja Xpress":  "https://www.ninjaxpress.co/id-id/tracking?id=",
+};
 
 const mapProduct = (p) => ({ ...p, desc: p.description, preview_images: p.preview_images||[] });
 const mapOrder   = (o) => ({
@@ -62,10 +69,10 @@ function Nav({ setView, cartCount, back, backLabel }) {
   return (
     <nav style={{background:"#fff",borderBottom:`3px solid ${C.yellow}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 16px rgba(232,97,42,0.07)"}}>
       <button onClick={()=>setView(back||"home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.3rem",color:C.orange}}>{back?"←":"📚"} {backLabel||"BukuKiddo"}</button>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={()=>setView("track")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 14px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>🔍 Lacak</button>
-        <button onClick={()=>setView("admin")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 14px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>⚙️ Admin</button>
-        <button onClick={()=>setView("cart")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"8px 18px",cursor:"pointer",fontFamily:FF.display,fontSize:"1rem",display:"flex",alignItems:"center",gap:6}}>🛒{cartCount>0&&<span style={{background:C.yellow,color:C.text,borderRadius:10,padding:"1px 7px",fontSize:"0.78rem",fontWeight:800}}>{cartCount}</span>}</button>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={()=>setView("dashboard")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 12px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.8rem"}}>📦 Pesananku</button>
+        <button onClick={()=>setView("admin")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 12px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.8rem"}}>⚙️ Admin</button>
+        <button onClick={()=>setView("cart")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",cursor:"pointer",fontFamily:FF.display,fontSize:"1rem",display:"flex",alignItems:"center",gap:6}}>🛒{cartCount>0&&<span style={{background:C.yellow,color:C.text,borderRadius:10,padding:"1px 7px",fontSize:"0.78rem",fontWeight:800}}>{cartCount}</span>}</button>
       </div>
     </nav>
   );
@@ -406,9 +413,232 @@ function PaymentPage({ order, setView, qrisUrl }) {
         )}
 
         <div style={{background:C.rsBg,borderRadius:12,padding:"14px 16px"}}>
-          <p style={{margin:0,fontSize:"0.85rem",color:C.rs,fontWeight:700}}>🔍 Lacak dengan ID: <strong>{order.id}</strong></p>
-          <button onClick={()=>setView("track")} style={{background:"none",border:"none",color:C.rs,fontWeight:700,cursor:"pointer",padding:0,marginTop:4,textDecoration:"underline",fontFamily:FF.body,fontSize:"0.85rem"}}>Lacak pesanan →</button>
+          <p style={{margin:"0 0 6px",fontSize:"0.88rem",color:C.rs,fontWeight:800}}>📦 Pantau pesananmu secara real-time!</p>
+          <p style={{margin:"0 0 10px",fontSize:"0.8rem",color:C.muted}}>Cek status, ongkir, dan nomor resi kapan saja tanpa perlu tanya admin.</p>
+          <button onClick={()=>setView("dashboard")} style={{width:"100%",background:C.rs,color:"#fff",border:"none",borderRadius:20,padding:"11px",fontFamily:FF.display,fontSize:"1rem",cursor:"pointer"}}>
+            📦 Lihat Status Pesanan Saya
+          </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BUYER DASHBOARD ──────────────────────────────────────────────────────────
+function BuyerDashboard({ setView }) {
+  const [phone,setPhone]     = useState("");
+  const [orders,setOrders]   = useState([]);
+  const [loading,setLoading] = useState(false);
+  const [searched,setSearched] = useState(false);
+  const [expanded,setExpanded] = useState(null);
+  const [lastRefresh,setLastRefresh] = useState(null);
+
+  const normalizePhone = (p) => p.replace(/\D/g,"").replace(/^0/,"62").replace(/^62/,"62");
+
+  const fetchOrders = async (ph) => {
+    setLoading(true);
+    const normalized = normalizePhone(ph||phone);
+    // search by both formats: 08xx and 628xx
+    const alt = normalized.startsWith("62") ? "0"+normalized.slice(2) : "62"+normalized.slice(1);
+    const { data } = await supabase.from("orders").select("*")
+      .or(`buyer_phone.eq.${normalized},buyer_phone.eq.${alt},buyer_phone.eq.${ph||phone}`)
+      .order("created_at",{ascending:false});
+    setOrders(data||[]);
+    setSearched(true);
+    setLastRefresh(new Date());
+    setLoading(false);
+  };
+
+  // Auto-refresh every 60 seconds if already searched
+  useEffect(()=>{
+    if(!searched||!phone) return;
+    const id = setInterval(()=>fetchOrders(phone), 60000);
+    return ()=>clearInterval(id);
+  },[searched,phone]);
+
+  const statusColor = {
+    "Menunggu Pembayaran": ["#FFF3E0","#E65100","⏳"],
+    "Pembayaran Dikonfirmasi": ["#E8F5E9","#1B5E20","✅"],
+    "Diproses": ["#E3F2FD","#0D47A1","⚙️"],
+    "Dikirim": ["#F3E5F5","#6A1B9A","🚚"],
+    "Selesai": [C.rsBg,C.rs,"🎉"],
+  };
+
+  const trackUrl = (courier, resi) => {
+    const base = COURIER_URLS[courier];
+    return base ? base + resi : `https://www.google.com/search?q=lacak+resi+${courier}+${resi}`;
+  };
+
+  return (
+    <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
+      <nav style={{background:"#fff",borderBottom:`3px solid ${C.yellow}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 16px rgba(232,97,42,0.07)"}}>
+        <button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.2rem",color:C.orange}}>← BukuKiddo</button>
+        <span style={{fontFamily:FF.display,fontSize:"1.2rem",color:C.text}}>📦 Pesanan Saya</span>
+        {searched&&<button onClick={()=>fetchOrders(phone)} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"5px 12px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.78rem"}}>🔄 Refresh</button>}
+      </nav>
+
+      <div style={{maxWidth:640,margin:"0 auto",padding:"28px 20px"}}>
+
+        {/* HERO */}
+        {!searched&&(
+          <div style={{textAlign:"center",marginBottom:28}}>
+            <div style={{fontSize:"4rem",marginBottom:10}}>📦</div>
+            <h2 style={{fontFamily:FF.display,color:C.text,margin:"0 0 8px",fontSize:"1.6rem"}}>Cek Pesanan Saya</h2>
+            <p style={{color:C.muted,fontSize:"0.9rem",lineHeight:1.6}}>Masukkan nomor WhatsApp yang kamu gunakan saat checkout untuk melihat semua pesananmu secara real-time</p>
+          </div>
+        )}
+
+        {/* SEARCH BOX */}
+        <div style={{background:"#fff",borderRadius:16,padding:"20px",border:`2px solid ${C.border}`,marginBottom:20}}>
+          {searched&&<p style={{fontSize:"0.8rem",color:C.muted,margin:"0 0 10px"}}>Nomor WA terdaftar:</p>}
+          <div style={{display:"flex",gap:8}}>
+            <input value={phone} onChange={e=>setPhone(e.target.value)} onKeyDown={e=>e.key==="Enter"&&fetchOrders()} placeholder="Contoh: 08123456789"
+              style={{flex:1,padding:"12px 16px",borderRadius:20,border:`2px solid ${C.border}`,fontSize:"0.95rem",fontFamily:FF.body,outline:"none"}}/>
+            <button onClick={()=>fetchOrders()} disabled={loading||!phone.trim()} style={{background:phone.trim()?C.orange:"#ccc",color:"#fff",border:"none",borderRadius:20,padding:"12px 20px",fontFamily:FF.display,cursor:phone.trim()?"pointer":"not-allowed",fontSize:"0.95rem",whiteSpace:"nowrap"}}>
+              {loading?"⏳ Memuat...":"Cari Pesanan"}
+            </button>
+          </div>
+          {lastRefresh&&<p style={{fontSize:"0.72rem",color:C.muted,margin:"8px 0 0",textAlign:"right"}}>🔄 Diperbarui: {lastRefresh.toLocaleTimeString("id-ID")} · Auto-refresh tiap 60 detik</p>}
+        </div>
+
+        {/* NO ORDERS */}
+        {searched&&!loading&&orders.length===0&&(
+          <div style={{textAlign:"center",padding:"48px 20px",color:C.muted,background:"#fff",borderRadius:16,border:`2px solid ${C.border}`}}>
+            <div style={{fontSize:"3.5rem",marginBottom:10}}>🔍</div>
+            <p style={{fontFamily:FF.display,fontSize:"1.2rem",margin:"0 0 6px"}}>Pesanan tidak ditemukan</p>
+            <p style={{fontSize:"0.85rem"}}>Pastikan nomor WA sama dengan yang dipakai saat checkout</p>
+          </div>
+        )}
+
+        {/* ORDER LIST */}
+        {orders.map(ord=>{
+          const isOpen = expanded===ord.id;
+          const [bg,col,icon] = statusColor[ord.status]||[C.bg,C.muted,"📦"];
+          const hasResi = ord.resi && ord.courier;
+          const hasOngkir = ord.ongkir && parseInt(ord.ongkir)>0;
+          const curIdx = STATUSES.indexOf(ord.status);
+
+          return (
+            <div key={ord.id} style={{background:"#fff",borderRadius:16,marginBottom:14,border:`2px solid ${isOpen?C.orange:C.border}`,overflow:"hidden",transition:"border .2s"}}>
+
+              {/* ORDER HEADER - always visible */}
+              <div onClick={()=>setExpanded(isOpen?null:ord.id)} style={{padding:"16px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:44,height:44,borderRadius:12,background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.4rem",flexShrink:0}}>{icon}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <div style={{fontFamily:FF.display,fontSize:"1rem",color:C.text}}>{ord.id}</div>
+                    <span style={{background:bg,color:col,borderRadius:20,padding:"3px 10px",fontSize:"0.7rem",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{ord.status}</span>
+                  </div>
+                  <div style={{fontSize:"0.78rem",color:C.muted,marginTop:2}}>{new Date(ord.created_at).toLocaleDateString("id-ID",{dateStyle:"long"})}</div>
+                  <div style={{fontSize:"0.82rem",fontWeight:700,color:hasOngkir?C.orange:C.warn,marginTop:3}}>
+                    {hasOngkir?`Total: ${fmt(ord.total)}`:"⏳ Menunggu konfirmasi total"}
+                  </div>
+                </div>
+                <div style={{color:C.muted,fontSize:"1.1rem",transform:isOpen?"rotate(180deg)":"none",transition:"transform .2s",flexShrink:0}}>▾</div>
+              </div>
+
+              {/* ORDER DETAIL - expanded */}
+              {isOpen&&(
+                <div style={{borderTop:`2px dashed ${C.border}`,padding:"16px 18px"}}>
+
+                  {/* Progress Steps */}
+                  <div style={{marginBottom:16}}>
+                    {STATUSES.map((s,i)=>{
+                      const done=i<=curIdx; const current=i===curIdx;
+                      return (
+                        <div key={s} style={{display:"flex",gap:10}}>
+                          <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                            <div style={{width:26,height:26,borderRadius:"50%",background:done?C.orange:C.border,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background .3s"}}>
+                              {done&&<span style={{color:"#fff",fontSize:"0.75rem"}}>✓</span>}
+                            </div>
+                            {i<STATUSES.length-1&&<div style={{width:2,height:24,background:done&&i<curIdx?C.orange:C.border,transition:"background .3s"}}/>}
+                          </div>
+                          <div style={{paddingBottom:i<STATUSES.length-1?16:0,paddingTop:2,display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:"0.86rem",fontWeight:done?800:400,color:done?C.text:C.muted}}>{s}</span>
+                            {current&&<span style={{background:C.poBg,color:C.po,fontSize:"0.68rem",fontWeight:800,borderRadius:6,padding:"2px 7px"}}>Sekarang</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Items */}
+                  <div style={{background:C.bg,borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+                    <p style={{fontSize:"0.78rem",fontWeight:800,color:C.muted,margin:"0 0 8px",textTransform:"uppercase",letterSpacing:"0.5px"}}>Produk Dipesan</p>
+                    {(ord.cart||[]).map(({product:p,qty},i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:"0.85rem"}}>
+                        <span style={{color:C.text}}>{p.emoji||"📗"} {p.name} <span style={{color:C.muted}}>×{qty}</span></span>
+                        <span style={{fontWeight:700}}>{fmt(p.price*qty)}</span>
+                      </div>
+                    ))}
+                    <div style={{borderTop:`1.5px dashed ${C.border}`,marginTop:8,paddingTop:8}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.83rem",color:C.muted,marginBottom:4}}><span>Subtotal produk</span><span style={{fontWeight:700,color:C.text}}>{fmt(ord.sub||0)}</span></div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.83rem",marginBottom:4}}>
+                        <span style={{color:C.muted}}>Ongkos kirim</span>
+                        <span style={{fontWeight:700,color:hasOngkir?C.text:C.warn}}>{hasOngkir?fmt(ord.ongkir):"⏳ Menunggu konfirmasi"}</span>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontFamily:FF.display,fontSize:"1rem",color:C.orange}}>
+                        <span>Total Akhir</span>
+                        <span>{hasOngkir?fmt(ord.total):"—"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Info */}
+                  <div style={{background:"#fff",border:`2px solid ${C.border}`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:"0.83rem"}}>
+                    <p style={{fontSize:"0.78rem",fontWeight:800,color:C.muted,margin:"0 0 6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>Info Pembayaran</p>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{color:C.muted}}>Metode</span><span style={{fontWeight:700}}>{ord.payment==="transfer"?"🏦 Transfer Bank":"⚡ QRIS"}</span></div>
+                    {ord.bank_name&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{color:C.muted}}>Bank</span><span style={{fontWeight:700}}>{ord.bank_name}</span></div>}
+                    {ord.bank_number&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{color:C.muted}}>No. Rekening</span><span style={{fontWeight:700}}>{ord.bank_number}</span></div>}
+                    {ord.bank_account_name&&<div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.muted}}>a.n.</span><span style={{fontWeight:700}}>{ord.bank_account_name}</span></div>}
+                  </div>
+
+                  {/* Shipping & Resi */}
+                  {(ord.courier||ord.resi)&&(
+                    <div style={{background:hasResi?C.rsBg:C.poBg,border:`2px solid ${hasResi?C.rs:C.po}30`,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                      <p style={{fontSize:"0.78rem",fontWeight:800,color:C.muted,margin:"0 0 8px",textTransform:"uppercase",letterSpacing:"0.5px"}}>Info Pengiriman</p>
+                      {ord.courier&&<div style={{display:"flex",justifyContent:"space-between",fontSize:"0.83rem",marginBottom:4}}><span style={{color:C.muted}}>Kurir</span><span style={{fontWeight:700}}>{ord.courier}</span></div>}
+                      {ord.resi&&(
+                        <div>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.83rem",marginBottom:8}}>
+                            <span style={{color:C.muted}}>No. Resi</span>
+                            <span style={{fontFamily:FF.display,fontSize:"0.95rem",color:C.rs,letterSpacing:1}}>{ord.resi}</span>
+                          </div>
+                          <a href={trackUrl(ord.courier,ord.resi)} target="_blank" rel="noreferrer"
+                            style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:C.rs,color:"#fff",borderRadius:20,padding:"10px",textDecoration:"none",fontFamily:FF.display,fontSize:"0.95rem"}}>
+                            🔍 Lacak Paket di {ord.courier}
+                          </a>
+                        </div>
+                      )}
+                      {!ord.resi&&ord.status==="Diproses"&&<p style={{fontSize:"0.8rem",color:C.po,margin:0,fontWeight:700}}>📦 Nomor resi akan muncul di sini setelah pesanan dikirim</p>}
+                    </div>
+                  )}
+
+                  {/* Alamat */}
+                  <div style={{background:C.bg,borderRadius:10,padding:"10px 14px",fontSize:"0.83rem"}}>
+                    <p style={{fontSize:"0.78rem",fontWeight:800,color:C.muted,margin:"0 0 6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>Alamat Pengiriman</p>
+                    <p style={{margin:0,color:C.text,lineHeight:1.6}}>{ord.buyer_address}, {ord.buyer_city}</p>
+                  </div>
+
+                  {/* Catatan jika masih menunggu konfirmasi ongkir */}
+                  {ord.status==="Menunggu Pembayaran"&&!hasOngkir&&(
+                    <div style={{background:"#FFF8E1",border:"2px solid #F59E0B",borderRadius:10,padding:"12px 14px",marginTop:10,display:"flex",gap:8}}>
+                      <span style={{fontSize:"1.2rem",flexShrink:0}}>⏳</span>
+                      <p style={{margin:0,fontSize:"0.82rem",color:"#78350F",lineHeight:1.6}}>Admin sedang mengkonfirmasi ongkos kirim ke supplier. Total akhir akan segera diinformasikan. Halaman ini otomatis diperbarui setiap 60 detik.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Tip bottom */}
+        {searched&&orders.length>0&&(
+          <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:`2px solid ${C.border}`,textAlign:"center"}}>
+            <p style={{margin:0,fontSize:"0.8rem",color:C.muted,lineHeight:1.6}}>💡 Halaman ini otomatis diperbarui setiap 60 detik. Kamu bisa cek status pesanan kapan saja tanpa perlu menghubungi admin.</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -748,6 +978,7 @@ export default function App() {
     {view==="cart"&&<CartPage cart={cart} setCart={setCart} setView={setView}/>}
     {view==="checkout"&&<CheckoutPage cart={cart} setView={setView} onPlace={placeOrder} banks={banks} qrisUrl={qrisUrl}/>}
     {view==="payment"&&currentOrder&&<PaymentPage order={currentOrder} setView={setView} qrisUrl={qrisUrl}/>}
+    {view==="dashboard"&&<BuyerDashboard setView={setView}/>}
     {view==="track"&&<TrackPage setView={setView}/>}
     {view==="admin"&&<AdminPage products={products} fetchProducts={fetchProducts} setView={setView} auth={auth} setAuth={setAuth} banks={banks} fetchBanks={fetchBanks} qrisUrl={qrisUrl} fetchQris={fetchQris}/>}
   </>);
