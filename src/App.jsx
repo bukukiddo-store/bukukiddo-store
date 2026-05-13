@@ -24,27 +24,27 @@ const mapProduct=(p)=>({...p,desc:p.description,preview_images:p.preview_images|
 const uploadImage=async(file,path)=>{const{error}=await supabase.storage.from("book-previews").upload(path,file,{upsert:true});if(error)throw error;const{data}=supabase.storage.from("book-previews").getPublicUrl(path);return data.publicUrl;};
 const deleteImage=async(url)=>{try{const p=url.split("/book-previews/")[1];if(p)await supabase.storage.from("book-previews").remove([p]);}catch(e){}};
 
-function Badge({type}){const po=type==="preorder";return <span style={{background:po?C.poBg:C.rsBg,color:po?C.po:C.rs,border:`1.5px solid ${po?C.po:C.rs}`,borderRadius:20,padding:"3px 11px",fontSize:"0.7rem",fontWeight:800,fontFamily:FF.body,textTransform:"uppercase",whiteSpace:"nowrap"}}>{po?"\u23F3 Pre-Order":"\u2705 Ready Stock"}</span>;}
+function Badge({type}){const po=type==="preorder";return <span style={{background:po?C.poBg:C.rsBg,color:po?C.po:C.rs,border:`1.5px solid ${po?C.po:C.rs}`,borderRadius:20,padding:"3px 11px",fontSize:"0.7rem",fontWeight:800,fontFamily:FF.body,textTransform:"uppercase",whiteSpace:"nowrap"}}>{po?"⏳ Pre-Order":"✅ Ready Stock"}</span>;}
 function StatusPill({s}){const map={"Menunggu Pembayaran":["#FFF3E0","#E65100"],"Pembayaran Dikonfirmasi":["#E8F5E9","#1B5E20"],"Diproses":["#E3F2FD","#0D47A1"],"Dikirim":["#F3E5F5","#6A1B9A"],"Selesai":[C.rsBg,C.rs]};const[bg,col]=map[s]||[C.bg,C.muted];return <span style={{background:bg,color:col,borderRadius:20,padding:"4px 12px",fontSize:"0.75rem",fontWeight:800,fontFamily:FF.body}}>{s}</span>;}
 function Countdown({deadline}){const[t,setT]=useState({d:0,h:0,m:0,s:0});useEffect(()=>{const tick=()=>{const diff=new Date(deadline)-new Date();if(diff<=0)return setT({d:0,h:0,m:0,s:0});setT({d:Math.floor(diff/864e5),h:Math.floor(diff%864e5/36e5),m:Math.floor(diff%36e5/6e4),s:Math.floor(diff%6e4/1000)});};tick();const id=setInterval(tick,1000);return()=>clearInterval(id);},[deadline]);return <div style={{display:"flex",gap:6}}>{[["d","Hari"],["h","Jam"],["m","Mnt"],["s","Dtk"]].map(([k,l])=>(<div key={k} style={{textAlign:"center"}}><div style={{background:C.orange,color:"#fff",borderRadius:8,padding:"5px 8px",fontFamily:FF.display,fontSize:"1rem",minWidth:36}}>{String(t[k]).padStart(2,"0")}</div><div style={{fontSize:"0.62rem",color:C.muted,marginTop:2}}>{l}</div></div>))}</div>;}
 function Card({title,children}){return <div style={{background:"#fff",borderRadius:16,padding:"20px",marginBottom:16,border:`2px solid ${C.border}`}}><h3 style={{fontFamily:FF.display,color:C.text,margin:"0 0 16px",fontSize:"1.05rem"}}>{title}</h3>{children}</div>;}
 
 function Nav({setView,cartCount,back,backLabel,buyer,onLogout}){
   return(<nav style={{background:"#fff",borderBottom:`3px solid ${C.yellow}`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 16px rgba(232,97,42,0.07)"}}>
-    <button onClick={()=>setView(back||"home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.2rem",color:C.orange}}>{back?"\u2190":"\U0001F4DA"} {backLabel||"BukuKiddo"}</button>
+    <button onClick={()=>setView(back||"home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.2rem",color:C.orange}}>{back?"←":"📚"} {backLabel||"BukuKiddo"}</button>
     <div style={{display:"flex",gap:6,alignItems:"center"}}>
       {buyer?(<>
-        <button onClick={()=>setView("dashboard")} style={{background:C.poBg,border:`2px solid ${C.orange}`,borderRadius:20,padding:"6px 12px",color:C.orange,cursor:"pointer",fontFamily:FF.body,fontWeight:800,fontSize:"0.8rem"}}>\U0001F4E6 Pesananku</button>
+        <button onClick={()=>setView("dashboard")} style={{background:C.poBg,border:`2px solid ${C.orange}`,borderRadius:20,padding:"6px 12px",color:C.orange,cursor:"pointer",fontFamily:FF.body,fontWeight:800,fontSize:"0.8rem"}}>📦 Pesananku</button>
         <div style={{display:"flex",alignItems:"center",gap:6,background:C.bg,border:`2px solid ${C.border}`,borderRadius:20,padding:"5px 10px",cursor:"pointer"}} onClick={onLogout}>
           <div style={{width:24,height:24,borderRadius:"50%",background:C.orange,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem",color:"#fff",fontWeight:800}}>{buyer.name[0].toUpperCase()}</div>
           <span style={{fontSize:"0.78rem",fontWeight:700,color:C.text,maxWidth:70,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{buyer.name.split(" ")[0]}</span>
-          <span style={{fontSize:"0.68rem",color:C.muted}}>\u21A9</span>
+          <span style={{fontSize:"0.68rem",color:C.muted}}>↩</span>
         </div>
       </>):(
-        <button onClick={()=>setView("auth")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 12px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.8rem"}}>\U0001F464 Masuk</button>
+        <button onClick={()=>setView("auth")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 12px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.8rem"}}>👤 Masuk</button>
       )}
       <button onClick={()=>setView("admin")} style={{background:"none",border:`2px solid ${C.border}`,borderRadius:20,padding:"6px 10px",color:C.muted,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.8rem"}}>⚙️</button>
-      <button onClick={()=>setView("cart")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"8px 14px",cursor:"pointer",fontFamily:FF.display,fontSize:"1rem",display:"flex",alignItems:"center",gap:5}}>\U0001F6D2{cartCount>0&&<span style={{background:C.yellow,color:C.text,borderRadius:10,padding:"1px 6px",fontSize:"0.75rem",fontWeight:800}}>{cartCount}</span>}</button>
+      <button onClick={()=>setView("cart")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"8px 14px",cursor:"pointer",fontFamily:FF.display,fontSize:"1rem",display:"flex",alignItems:"center",gap:5}}>🛒{cartCount>0&&<span style={{background:C.yellow,color:C.text,borderRadius:10,padding:"1px 6px",fontSize:"0.75rem",fontWeight:800}}>{cartCount}</span>}</button>
     </div>
   </nav>);
 }
@@ -90,13 +90,13 @@ function BuyerAuth({setView,onLogin}){
   return(
     <div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
       <nav style={{background:"#fff",borderBottom:`3px solid ${C.yellow}`,padding:"12px 20px",display:"flex",alignItems:"center",gap:12}}>
-        <button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.2rem",color:C.orange}}>\u2190</button>
-        <span style={{fontFamily:FF.display,fontSize:"1.2rem",color:C.text}}>\U0001F464 {mode==="login"?"Masuk":"Daftar Akun"}</span>
+        <button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontFamily:FF.display,fontSize:"1.2rem",color:C.orange}}>←</button>
+        <span style={{fontFamily:FF.display,fontSize:"1.2rem",color:C.text}}>👤 {mode==="login"?"Masuk":"Daftar Akun"}</span>
       </nav>
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 20px"}}>
         <div style={{width:"100%",maxWidth:400}}>
           <div style={{textAlign:"center",marginBottom:24}}>
-            <div style={{fontSize:"3.5rem",marginBottom:6}}>\U0001F4DA</div>
+            <div style={{fontSize:"3.5rem",marginBottom:6}}>📚</div>
             <h2 style={{fontFamily:FF.display,color:C.orange,margin:"0 0 4px",fontSize:"1.8rem"}}>BukuKiddo</h2>
             <p style={{color:C.muted,fontSize:"0.88rem",margin:0}}>{mode==="login"?"Masuk ke akun kamu":"Buat akun baru gratis"}</p>
           </div>
@@ -104,25 +104,25 @@ function BuyerAuth({setView,onLogin}){
             {[["login","Masuk"],["register","Daftar"]].map(([m,l])=>(<button key={m} onClick={()=>{setMode(m);setErr("");setForm({name:"",phone:"",password:"",confirm:""}); }} style={{flex:1,padding:"9px",borderRadius:16,border:"none",background:mode===m?C.orange:"transparent",color:mode===m?"#fff":C.muted,fontFamily:FF.display,fontSize:"0.95rem",cursor:"pointer"}}>{l}</button>))}
           </div>
           <div style={{background:"#fff",borderRadius:20,padding:"24px",border:`2px solid ${C.border}`,boxShadow:"0 4px 24px rgba(232,97,42,0.07)"}}>
-            {mode==="register"&&(<div style={{marginBottom:14}}><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>\U0001F464 Nama Lengkap</label><input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nama kamu" style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`2px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,boxSizing:"border-box",outline:"none"}}/></div>)}
-            <div style={{marginBottom:14}}><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>\U0001F4F1 Nomor WhatsApp</label><input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="08xxxxxxxxxx" type="tel" style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`2px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,boxSizing:"border-box",outline:"none"}}/></div>
+            {mode==="register"&&(<div style={{marginBottom:14}}><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>👤 Nama Lengkap</label><input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nama kamu" style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`2px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,boxSizing:"border-box",outline:"none"}}/></div>)}
+            <div style={{marginBottom:14}}><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>📱 Nomor WhatsApp</label><input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="08xxxxxxxxxx" type="tel" style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`2px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,boxSizing:"border-box",outline:"none"}}/></div>
             <div style={{marginBottom:mode==="register"?14:20,position:"relative"}}>
-              <label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>\U0001F512 Password</label>
+              <label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>🔒 Password</label>
               <div style={{position:"relative"}}>
                 <input value={form.password} onChange={e=>set("password",e.target.value)} onKeyDown={e=>e.key==="Enter"&&mode==="login"&&doLogin()} placeholder={mode==="register"?"Minimal 6 karakter":"Password kamu"} type={showPw?"text":"password"} style={{width:"100%",padding:"11px 44px 11px 14px",borderRadius:10,border:`2px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,boxSizing:"border-box",outline:"none"}}/>
-                <button onClick={()=>setShowPw(v=>!v)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:"1.1rem",color:C.muted}}>{showPw?"\U0001F648":"\U0001F441\uFE0F"}</button>
+                <button onClick={()=>setShowPw(v=>!v)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:"1.1rem",color:C.muted}}>{showPw?"🙈":"👁️"}</button>
               </div>
             </div>
-            {mode==="register"&&(<div style={{marginBottom:20}}><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>\U0001F512 Konfirmasi Password</label><input value={form.confirm} onChange={e=>set("confirm",e.target.value)} placeholder="Ulangi password" type={showPw?"text":"password"} style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`2px solid ${form.confirm&&form.confirm!==form.password?"#e74c3c":C.border}`,fontSize:"0.92rem",fontFamily:FF.body,boxSizing:"border-box",outline:"none"}}/>{form.confirm&&form.confirm!==form.password&&<p style={{fontSize:"0.75rem",color:"#e74c3c",margin:"4px 0 0"}}>Password tidak cocok</p>}</div>)}
-            {err&&<div style={{background:"#FFF0F0",border:"2px solid #fcc",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:"0.83rem",color:"#c0392b",fontWeight:700}}>\u26A0\uFE0F {err}</div>}
+            {mode==="register"&&(<div style={{marginBottom:20}}><label style={{display:"block",fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:5}}>🔒 Konfirmasi Password</label><input value={form.confirm} onChange={e=>set("confirm",e.target.value)} placeholder="Ulangi password" type={showPw?"text":"password"} style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`2px solid ${form.confirm&&form.confirm!==form.password?"#e74c3c":C.border}`,fontSize:"0.92rem",fontFamily:FF.body,boxSizing:"border-box",outline:"none"}}/>{form.confirm&&form.confirm!==form.password&&<p style={{fontSize:"0.75rem",color:"#e74c3c",margin:"4px 0 0"}}>Password tidak cocok</p>}</div>)}
+            {err&&<div style={{background:"#FFF0F0",border:"2px solid #fcc",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:"0.83rem",color:"#c0392b",fontWeight:700}}>⚠️ {err}</div>}
             <button onClick={mode==="login"?doLogin:doRegister} disabled={loading} style={{width:"100%",background:loading?"#ccc":C.orange,color:"#fff",border:"none",borderRadius:20,padding:"14px",fontFamily:FF.display,fontSize:"1.1rem",cursor:loading?"not-allowed":"pointer"}}>
-              {loading?"\u23F3 Memproses...":(mode==="login"?"Masuk ke Akun \U0001F680":"Buat Akun Gratis \u2728")}
+              {loading?"⏳ Memproses...":(mode==="login"?"Masuk ke Akun 🚀":"Buat Akun Gratis ✨")}
             </button>
           </div>
-          {mode==="register"&&(<div style={{background:"#E6FAF6",border:"2px solid #3ECFB240",borderRadius:12,padding:"12px 16px",marginTop:14}}><p style={{margin:0,fontSize:"0.8rem",color:"#0f6e5a",lineHeight:1.6}}>\U0001F510 Password disimpan terenkripsi (SHA-256). Kami tidak menyimpan password asli kamu.</p></div>)}
+          {mode==="register"&&(<div style={{background:"#E6FAF6",border:"2px solid #3ECFB240",borderRadius:12,padding:"12px 16px",marginTop:14}}><p style={{margin:0,fontSize:"0.8rem",color:"#0f6e5a",lineHeight:1.6}}>🔐 Password disimpan terenkripsi (SHA-256). Kami tidak menyimpan password asli kamu.</p></div>)}
           <p style={{textAlign:"center",fontSize:"0.83rem",color:C.muted,margin:"16px 0 0"}}>
             {mode==="login"?"Belum punya akun? ":"Sudah punya akun? "}
-            <button onClick={()=>{setMode(mode==="login"?"register":"login");setErr("");}} style={{background:"none",border:"none",color:C.orange,fontWeight:800,cursor:"pointer",fontFamily:FF.body,fontSize:"0.83rem"}}>{mode==="login"?"Daftar sekarang \u2192":"Masuk \u2192"}</button>
+            <button onClick={()=>{setMode(mode==="login"?"register":"login");setErr("");}} style={{background:"none",border:"none",color:C.orange,fontWeight:800,cursor:"pointer",fontFamily:FF.body,fontSize:"0.83rem"}}>{mode==="login"?"Daftar sekarang →":"Masuk →"}</button>
           </p>
         </div>
       </div>
@@ -132,7 +132,7 @@ function BuyerAuth({setView,onLogin}){
 
 function ImageGallery({images,emoji}){
   const[active,setActive]=useState(0);
-  if(!images||images.length===0)return <div style={{background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",borderRadius:20,height:380,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9rem",border:`2px solid ${C.border}`}}>{emoji||"\U0001F4D7"}</div>;
+  if(!images||images.length===0)return <div style={{background:"linear-gradient(135deg,#FFF0E4,#FFF5D6)",borderRadius:20,height:380,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9rem",border:`2px solid ${C.border}`}}>{emoji||"📗"}</div>;
   return(<div>
     <div style={{position:"relative",borderRadius:20,overflow:"hidden",border:`2px solid ${C.border}`,marginBottom:12,background:"#f9f9f9"}}>
       <img src={images[active]} alt="" style={{width:"100%",height:380,objectFit:"cover",display:"block"}}/>
@@ -151,7 +151,7 @@ function ImageUploader({images,setImages,productId,uploading,setUploading}){
   const handleFiles=async(files)=>{const rem=MAX_IMG-images.length;if(rem<=0)return alert("Maks "+MAX_IMG+" gambar");const toUp=Array.from(files).slice(0,rem);setUploading(true);try{const pid=productId||"temp_"+Date.now();const urls=await Promise.all(toUp.map(f=>uploadImage(f,pid+"/"+Date.now()+"_"+f.name)));setImages(p=>[...p,...urls]);}catch(e){alert("Gagal upload: "+e.message);}setUploading(false);};
   const remove=async(idx)=>{if(!window.confirm("Hapus gambar?"))return;await deleteImage(images[idx]);setImages(p=>p.filter((_,i)=>i!==idx));};
   return(<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><label style={{fontSize:"0.8rem",fontWeight:700,color:C.text}}>\U0001F4F8 Preview Isi Buku</label><span style={{fontSize:"0.75rem",color:C.muted,fontWeight:700}}>{images.length}/{MAX_IMG} foto</span></div>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><label style={{fontSize:"0.8rem",fontWeight:700,color:C.text}}>📸 Preview Isi Buku</label><span style={{fontSize:"0.75rem",color:C.muted,fontWeight:700}}>{images.length}/{MAX_IMG} foto</span></div>
     {images.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}}>{images.map((url,i)=>(<div key={i} style={{position:"relative",aspectRatio:"1",borderRadius:10,overflow:"hidden",border:`2px solid ${C.border}`}}><img src={url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><button onClick={()=>remove(i)} style={{position:"absolute",top:3,right:3,background:"rgba(231,76,60,0.9)",color:"#fff",border:"none",borderRadius:"50%",width:22,height:22,fontSize:"0.7rem",cursor:"pointer"}}>&#x2715;</button>{i===0&&<div style={{position:"absolute",bottom:3,left:3,background:"rgba(232,97,42,0.85)",color:"#fff",borderRadius:6,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>Cover</div>}</div>))}</div>}
     {images.length<MAX_IMG&&<div onClick={()=>!uploading&&ref.current.click()} style={{border:`2px dashed ${uploading?C.mint:C.border}`,borderRadius:12,padding:"16px",textAlign:"center",cursor:uploading?"not-allowed":"pointer",background:uploading?"#E6FAF6":"#fafafa"}}><input ref={ref} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>handleFiles(e.target.files)}/>{uploading?<><div style={{fontSize:"1.8rem"}}>&#x23F3;</div><p style={{margin:"4px 0 0",fontSize:"0.82rem",color:C.mint,fontWeight:700}}>Mengupload...</p></>:<><div style={{fontSize:"1.8rem"}}>&#x1F4F7;</div><p style={{margin:"4px 0 0",fontSize:"0.82rem",color:C.muted,fontWeight:700}}>Tap untuk pilih foto</p><p style={{margin:"4px 0 0",fontSize:"0.72rem",color:C.muted}}>Sisa: {MAX_IMG-images.length} slot</p></>}</div>}
   </div>);
