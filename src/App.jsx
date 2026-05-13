@@ -49,7 +49,7 @@ function Nav({setView,cartCount,back,backLabel,buyer,onLogout}){
   </nav>);
 }
 
-function BuyerAuth({setView,onLogin}){
+function BuyerAuth({setView,onLogin,hasCart}){
   const[mode,setMode]=useState("login");
   const[form,setForm]=useState({name:"",phone:"",password:"",confirm:""});
   const[loading,setLoading]=useState(false);
@@ -67,7 +67,7 @@ function BuyerAuth({setView,onLogin}){
     setLoading(false);
     if(!data)return setErr("Nomor WA atau password salah.");
     onLogin({id:data.id,name:data.name,phone:data.phone});
-    setView("dashboard");
+    setView(hasCart?"checkout":"dashboard");
   };
 
   const doRegister=async()=>{
@@ -84,7 +84,7 @@ function BuyerAuth({setView,onLogin}){
     setLoading(false);
     if(error)return setErr("Gagal mendaftar: "+error.message);
     onLogin({id:data.id,name:data.name,phone:data.phone});
-    setView("dashboard");
+    setView(hasCart?"checkout":"dashboard");
   };
 
   return(
@@ -100,6 +100,10 @@ function BuyerAuth({setView,onLogin}){
             <h2 style={{fontFamily:FF.display,color:C.orange,margin:"0 0 4px",fontSize:"1.8rem"}}>BukuKiddo</h2>
             <p style={{color:C.muted,fontSize:"0.88rem",margin:0}}>{mode==="login"?"Masuk ke akun kamu":"Buat akun baru gratis"}</p>
           </div>
+          {hasCart&&<div style={{background:C.rsBg,border:`2px solid ${C.rs}30`,borderRadius:12,padding:"12px 14px",marginBottom:16,display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:"1.2rem",flexShrink:0}}>🛒</span>
+            <p style={{margin:0,fontSize:"0.82rem",color:"#0f6e5a",fontWeight:700,lineHeight:1.5}}>Kamu punya item di keranjang! Login atau daftar dulu untuk melanjutkan checkout.</p>
+          </div>}
           <div style={{display:"flex",background:"#fff",borderRadius:20,border:`2px solid ${C.border}`,padding:4,marginBottom:20}}>
             {[["login","Masuk"],["register","Daftar"]].map(([m,l])=>(<button key={m} onClick={()=>{setMode(m);setErr("");setForm({name:"",phone:"",password:"",confirm:""}); }} style={{flex:1,padding:"9px",borderRadius:16,border:"none",background:mode===m?C.orange:"transparent",color:mode===m?"#fff":C.muted,fontFamily:FF.display,fontSize:"0.95rem",cursor:"pointer"}}>{l}</button>))}
           </div>
@@ -264,8 +268,15 @@ function CartPage({cart,setCart,setView,buyer,onLogout}){
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,color:C.muted,fontSize:"0.88rem"}}><span>Ongkos kirim</span><span style={{color:C.mint,fontWeight:700}}>Ditentukan agen</span></div>
           <div style={{borderTop:`2px dashed ${C.border}`,paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div><div style={{fontSize:"0.82rem",color:C.muted}}>Total Belanja</div><div style={{fontFamily:FF.display,fontSize:"1.6rem",color:C.orange}}>{fmt(total)}</div></div>
-            <button onClick={()=>setView("checkout")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"14px 26px",fontFamily:FF.display,fontSize:"1.05rem",cursor:"pointer"}}>Checkout &#x2192;</button>
+            <button onClick={()=>buyer?setView("checkout"):setView("auth")} style={{background:C.orange,color:"#fff",border:"none",borderRadius:20,padding:"14px 26px",fontFamily:FF.display,fontSize:"1.05rem",cursor:"pointer"}}>Checkout &#x2192;</button>
           </div>
+          {!buyer&&<div style={{background:"#FFF8E1",border:"2px solid #F59E0B",borderRadius:12,padding:"12px 14px",marginTop:12,display:"flex",gap:10,alignItems:"center"}}>
+            <span style={{fontSize:"1.2rem",flexShrink:0}}>🔐</span>
+            <div>
+              <p style={{margin:"0 0 4px",fontWeight:800,color:"#92400E",fontSize:"0.85rem"}}>Login diperlukan untuk checkout</p>
+              <p style={{margin:0,fontSize:"0.78rem",color:"#78350F",lineHeight:1.5}}>Kamu akan diarahkan ke halaman masuk. Daftar gratis hanya 1 menit! ✨</p>
+            </div>
+          </div>}
         </div></>
       )}
     </div>
@@ -700,7 +711,10 @@ export default function App(){
   const[filter,setFilter]=useState("all");const[search,setSearch]=useState("");
   const[banks,setBanks]=useState([]);const[qrisUrl,setQrisUrl]=useState("");
   const[buyer,setBuyer]=useState(()=>{try{const s=sessionStorage.getItem(SESSION_KEY);return s?JSON.parse(s):null;}catch{return null;}});
-  const onLogin=(b)=>{setBuyer(b);try{sessionStorage.setItem(SESSION_KEY,JSON.stringify(b));}catch{}};
+  const onLogin=(b)=>{
+    setBuyer(b);
+    try{sessionStorage.setItem(SESSION_KEY,JSON.stringify(b));}catch{}
+  };
   const onLogout=()=>{setBuyer(null);try{sessionStorage.removeItem(SESSION_KEY);}catch{}};
   useEffect(()=>{fetchProducts();fetchBanks();fetchQris();},[]);
   const fetchProducts=async()=>{setLoading(true);const{data}=await supabase.from("products").select("*").order("created_at",{ascending:false});if(data)setProducts(data.map(mapProduct));setLoading(false);};
@@ -722,7 +736,7 @@ export default function App(){
     {view==="cart"&&<CartPage cart={cart} setCart={setCart} setView={setView} {...sp}/>}
     {view==="checkout"&&<CheckoutPage cart={cart} setView={setView} onPlace={placeOrder} banks={banks} qrisUrl={qrisUrl} buyer={buyer}/>}
     {view==="payment"&&currentOrder&&<PaymentPage order={currentOrder} setView={setView} qrisUrl={qrisUrl}/>}
-    {view==="auth"&&<BuyerAuth setView={setView} onLogin={onLogin}/>}
+    {view==="auth"&&<BuyerAuth setView={setView} onLogin={onLogin} hasCart={cart.length>0}/>}
     {view==="dashboard"&&<BuyerDashboard setView={setView} {...sp}/>}
     {view==="admin"&&<AdminPage products={products} fetchProducts={fetchProducts} setView={setView} auth={auth} setAuth={setAuth} banks={banks} fetchBanks={fetchBanks} qrisUrl={qrisUrl} fetchQris={fetchQris}/>}
   </>);
