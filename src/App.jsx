@@ -193,6 +193,12 @@ function HomePage({products,loading,cart,setView,setSelected,filter,setFilter,se
               <div style={{fontFamily:FF.display,fontSize:"1.15rem",color:C.orange}}>{fmt(p.price)}</div>
               <div style={{fontSize:"0.73rem",color:C.muted}}>{p.status==="ready"?"Stok: "+(p.stock||"∞"):p.age||""}</div>
             </div>
+            <a href={`https://wa.me/${WA}?text=${encodeURIComponent(`Halo BukuKiddo! 👋\nSaya tertarik dengan buku berikut:\n\n📚 ${p.name}\n💰 ${fmt(p.price)}\n📦 Status: ${p.status==="preorder"?"Pre-Order":"Ready Stock"}\n\nApakah stok masih tersedia? Terima kasih 🙏`)}`}
+              target="_blank" rel="noreferrer"
+              onClick={e=>e.stopPropagation()}
+              style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"#25D366",color:"#fff",borderRadius:20,padding:"8px 12px",textDecoration:"none",fontFamily:FF.body,fontWeight:800,fontSize:"0.8rem",marginTop:10}}>
+              💬 Tanya Stok
+            </a>
           </div>
         </div>
       );})}
@@ -232,6 +238,10 @@ function ProductPage({product:p,onAdd,setView,cart,buyer,onLogout}){
           </div>
           <button onClick={doAdd} style={{flex:1,background:added?C.rs:C.orange,color:"#fff",border:"none",borderRadius:30,padding:"14px 20px",fontFamily:FF.display,fontSize:"1.05rem",cursor:"pointer",transition:"background .3s"}}>{added?"✅ Ditambahkan!":"🛒 Tambah ke Keranjang"}</button>
         </div>
+        <a href={`https://wa.me/${WA}?text=${encodeURIComponent(`Halo BukuKiddo! 👋\nSaya tertarik dengan buku berikut:\n\n📚 ${p.name}\n💰 ${fmt(p.price)}\n📦 Status: ${p.status==="preorder"?"Pre-Order":"Ready Stock"}\n\nApakah stok masih tersedia? Terima kasih 🙏`)}`} target="_blank" rel="noreferrer"
+          style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#25D366",color:"#fff",borderRadius:30,padding:"13px 20px",textDecoration:"none",fontFamily:FF.display,fontSize:"1rem",marginTop:10}}>
+          💬 Tanya Stok via WhatsApp
+        </a>
         {added&&<div style={{background:C.rsBg,borderRadius:10,padding:"10px 14px",marginTop:10,textAlign:"center"}}><button onClick={()=>setView("cart")} style={{background:"none",border:"none",color:C.rs,fontFamily:FF.body,fontWeight:800,cursor:"pointer"}}>Lihat Keranjang & Checkout →</button></div>}
       </div>
     </div>
@@ -717,7 +727,22 @@ export default function App(){
   };
   const onLogout=()=>{setBuyer(null);try{sessionStorage.removeItem(SESSION_KEY);}catch{}};
   useEffect(()=>{fetchProducts();fetchBanks();fetchQris();},[]);
-  const fetchProducts=async()=>{setLoading(true);const{data}=await supabase.from("products").select("*").order("created_at",{ascending:false});if(data)setProducts(data.map(mapProduct));setLoading(false);};
+  const fetchProducts=async()=>{
+    setLoading(true);
+    const{data}=await supabase.from("products").select("*").order("created_at",{ascending:false});
+    if(data){
+      const now=new Date();
+      const expired=data.filter(p=>p.status==="preorder"&&p.deadline&&new Date(p.deadline)<now);
+      if(expired.length>0){
+        await Promise.all(expired.map(p=>supabase.from("products").delete().eq("id",p.id)));
+        const fresh=data.filter(p=>!(p.status==="preorder"&&p.deadline&&new Date(p.deadline)<now));
+        setProducts(fresh.map(mapProduct));
+      } else {
+        setProducts(data.map(mapProduct));
+      }
+    }
+    setLoading(false);
+  };
   const fetchBanks=async()=>{const{data}=await supabase.from("bank_accounts").select("*").order("created_at");if(data)setBanks(data);};
   const fetchQris=async()=>{const{data}=await supabase.from("settings").select("value").eq("key","qris_url").maybeSingle();if(data)setQrisUrl(data.value||"");};
   const addToCart=(product,qty)=>setCart(c=>{const ex=c.find(i=>i.product.id===product.id);return ex?c.map(i=>i.product.id===product.id?{...i,qty:i.qty+qty}:i):[...c,{product,qty}];});
