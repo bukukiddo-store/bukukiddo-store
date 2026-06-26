@@ -6,10 +6,17 @@ const supabase = createClient(
   "sb_publishable_vAY5Tqx5mZ-1EOqfd2AQHw_Ypc7kQog"
 );
 
-const C={orange:"#E8612A",orangeL:"#FF8F5E",bg:"#FFF9F4",text:"#2A1A0E",muted:"#9B8577",border:"#FFE0CC",yellow:"#FFD166",yellowL:"#FFF5D6",po:"#E8612A",poBg:"#FFF0E8",rs:"#1DB87A",rsBg:"#E6FAF6",warn:"#F59E0B",mint:"#3ECFB2"};
+const C={orange:"#E8612A",orangeL:"#FF8F5E",bg:"#FFF9F4",text:"#2A1A0E",muted:"#9B8577",border:"#FFE0CC",yellow:"#FFD166",yellowL:"#FFF5D6",po:"#E8612A",poBg:"#FFF0E8",rs:"#1DB87A",rsBg:"#E6FAF6",warn:"#F59E0B",mint:"#3ECFB2",promo:"#E0245E",promoBg:"#FFE5ED"};
 const FF={display:"'Fredoka One',cursive",body:"'Nunito',sans-serif"};
 const fmt=(n)=>"Rp "+Number(n).toLocaleString("id-ID");
+const promoRange=(items)=>{
+  const prices=(items||[]).map(i=>parseInt(i.price)||0).filter(n=>n>0);
+  if(prices.length===0)return "Cek harga";
+  const min=Math.min(...prices),max=Math.max(...prices);
+  return min===max?fmt(min):fmt(min)+" - "+fmt(max);
+};
 const genId=()=>"BK"+Date.now().toString(36).toUpperCase().slice(-8);
+const genItemId=()=>Math.random().toString(36).slice(2,8);
 const COURIERS=["JNE","J&T Express","SiCepat","Anteraja","Ninja Xpress"];
 const STATUSES=["Menunggu Pembayaran","Pembayaran Dikonfirmasi","Diproses","Dikirim","Selesai"];
 const WA="6281234567890";
@@ -20,11 +27,15 @@ const COURIER_URLS={"JNE":"https://www.jne.co.id/id/tracking/trace?awb=","J&T Ex
 
 const hashPassword=async(pw)=>{const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(pw));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");};
 const normalizePhone=(p)=>p.trim().replace(/\D/g,"").replace(/^0/,"62");
-const mapProduct=(p)=>({...p,desc:p.description,preview_images:p.preview_images||[]});
+const mapProduct=(p)=>({...p,desc:p.description,preview_images:p.preview_images||[],promo_items:p.promo_items||[]});
 const uploadImage=async(file,path)=>{const{error}=await supabase.storage.from("book-previews").upload(path,file,{upsert:true});if(error)throw error;const{data}=supabase.storage.from("book-previews").getPublicUrl(path);return data.publicUrl;};
 const deleteImage=async(url)=>{try{const p=url.split("/book-previews/")[1];if(p)await supabase.storage.from("book-previews").remove([p]);}catch(e){}};
 
-function Badge({type}){const po=type==="preorder";return <span style={{background:po?C.poBg:C.rsBg,color:po?C.po:C.rs,border:`1.5px solid ${po?C.po:C.rs}`,borderRadius:20,padding:"3px 11px",fontSize:"0.7rem",fontWeight:800,fontFamily:FF.body,textTransform:"uppercase",whiteSpace:"nowrap"}}>{po?"⏳ Pre-Order":"✅ Ready Stock"}</span>;}
+function Badge({type}){
+  const map={preorder:[C.poBg,C.po,"⏳ Pre-Order"],promo:[C.promoBg,C.promo,"🔥 Promo Spesial"],ready:[C.rsBg,C.rs,"✅ Ready Stock"]};
+  const[bg,col,label]=map[type]||map.ready;
+  return <span style={{background:bg,color:col,border:`1.5px solid ${col}`,borderRadius:20,padding:"3px 11px",fontSize:"0.7rem",fontWeight:800,fontFamily:FF.body,textTransform:"uppercase",whiteSpace:"nowrap"}}>{label}</span>;
+}
 function StatusPill({s}){const map={"Menunggu Pembayaran":["#FFF3E0","#E65100"],"Pembayaran Dikonfirmasi":["#E8F5E9","#1B5E20"],"Diproses":["#E3F2FD","#0D47A1"],"Dikirim":["#F3E5F5","#6A1B9A"],"Selesai":[C.rsBg,C.rs]};const[bg,col]=map[s]||[C.bg,C.muted];return <span style={{background:bg,color:col,borderRadius:20,padding:"4px 12px",fontSize:"0.75rem",fontWeight:800,fontFamily:FF.body}}>{s}</span>;}
 function Countdown({deadline}){const[t,setT]=useState({d:0,h:0,m:0,s:0});useEffect(()=>{const tick=()=>{const diff=new Date(deadline)-new Date();if(diff<=0)return setT({d:0,h:0,m:0,s:0});setT({d:Math.floor(diff/864e5),h:Math.floor(diff%864e5/36e5),m:Math.floor(diff%36e5/6e4),s:Math.floor(diff%6e4/1000)});};tick();const id=setInterval(tick,1000);return()=>clearInterval(id);},[deadline]);return <div style={{display:"flex",gap:6}}>{[["d","Hari"],["h","Jam"],["m","Mnt"],["s","Dtk"]].map(([k,l])=>(<div key={k} style={{textAlign:"center"}}><div style={{background:C.orange,color:"#fff",borderRadius:8,padding:"5px 8px",fontFamily:FF.display,fontSize:"1rem",minWidth:36}}>{String(t[k]).padStart(2,"0")}</div><div style={{fontSize:"0.62rem",color:C.muted,marginTop:2}}>{l}</div></div>))}</div>;}
 function Card({title,children}){return <div style={{background:"#fff",borderRadius:16,padding:"20px",marginBottom:16,border:`2px solid ${C.border}`}}><h3 style={{fontFamily:FF.display,color:C.text,margin:"0 0 16px",fontSize:"1.05rem"}}>{title}</h3>{children}</div>;}
@@ -173,7 +184,7 @@ function HomePage({products,loading,cart,setView,setSelected,filter,setFilter,se
       <div style={{maxWidth:400,margin:"0 auto"}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Cari judul atau kategori buku..." style={{width:"100%",padding:"13px 20px",borderRadius:30,border:`2.5px solid ${C.border}`,fontSize:"0.92rem",fontFamily:FF.body,outline:"none",boxSizing:"border-box",background:"#fff",boxShadow:"0 4px 20px rgba(232,97,42,0.1)"}}/></div>
     </div>
     <div style={{padding:"18px 20px 4px",display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-      {[["all","📚 Semua"],["preorder","⏳ Pre-Order"],["ready","✅ Ready Stock"]].map(([v,l])=>(<button key={v} onClick={()=>setFilter(v)} style={{padding:"8px 18px",borderRadius:20,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.88rem",background:filter===v?C.orange:"#fff",color:filter===v?"#fff":C.muted,border:`2px solid ${filter===v?C.orange:C.border}`}} dangerouslySetInnerHTML={{__html:l}}/>))}
+      {[["all","📚 Semua"],["preorder","⏳ Pre-Order"],["ready","✅ Ready Stock"],["promo","🔥 Promo Spesial"]].map(([v,l])=>(<button key={v} onClick={()=>setFilter(v)} style={{padding:"8px 18px",borderRadius:20,cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.88rem",background:filter===v?C.orange:"#fff",color:filter===v?"#fff":C.muted,border:`2px solid ${filter===v?C.orange:C.border}`}} dangerouslySetInnerHTML={{__html:l}}/>))}
     </div>
     {loading&&<div style={{textAlign:"center",padding:"60px",color:C.muted}}><div style={{fontSize:"3rem"}}>⏳</div><p style={{fontFamily:FF.display,fontSize:"1.2rem",marginTop:12}}>Memuat produk...</p></div>}
     {!loading&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:18,padding:"16px 20px 48px",maxWidth:1120,margin:"0 auto"}}>
@@ -188,12 +199,13 @@ function HomePage({products,loading,cart,setView,setSelected,filter,setFilter,se
             <div style={{fontSize:"0.72rem",color:C.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{p.category||"Umum"} · {p.origin||""}</div>
             <h3 style={{fontFamily:FF.display,fontSize:"0.97rem",color:C.text,margin:"0 0 6px"}}>{p.name}</h3>
             <p style={{fontSize:"0.8rem",color:C.muted,margin:"0 0 10px",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.desc||""}</p>
-            {p.status==="preorder"&&p.deadline&&<div style={{marginBottom:8}}><div style={{fontSize:"0.7rem",color:C.po,fontWeight:800,marginBottom:4}}>⏰ Ditutup dalam:</div><Countdown deadline={p.deadline}/></div>}
+            {(p.status==="preorder"||p.status==="promo")&&p.deadline&&<div style={{marginBottom:8}}><div style={{fontSize:"0.7rem",color:p.status==="promo"?C.promo:C.po,fontWeight:800,marginBottom:4}}>⏰ {p.status==="promo"?"Promo Berakhir":"Ditutup"} dalam:</div><Countdown deadline={p.deadline}/></div>}
+            {p.status==="promo"&&<div style={{display:"inline-block",background:C.promoBg,color:C.promo,borderRadius:8,padding:"2px 8px",fontSize:"0.7rem",fontWeight:800,marginBottom:8}}>📚 {(p.promo_items||[]).length} Judul Buku</div>}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
-              <div style={{fontFamily:FF.display,fontSize:"1.15rem",color:C.orange}}>{fmt(p.price)}</div>
-              <div style={{fontSize:"0.73rem",color:C.muted}}>{p.status==="ready"?"Stok: "+(p.stock||"∞"):p.age||""}</div>
+              <div style={{fontFamily:FF.display,fontSize:p.status==="promo"?"0.98rem":"1.15rem",color:p.status==="promo"?C.promo:C.orange}}>{p.status==="promo"?promoRange(p.promo_items):fmt(p.price)}</div>
+              <div style={{fontSize:"0.73rem",color:C.muted}}>{p.status==="ready"?"Stok: "+(p.stock||"∞"):p.status==="promo"?"":p.age||""}</div>
             </div>
-            <a href={`https://wa.me/${WA}?text=${encodeURIComponent(`Halo BukuKiddo! 👋\nSaya tertarik dengan buku berikut:\n\n📚 ${p.name}\n💰 ${fmt(p.price)}\n📦 Status: ${p.status==="preorder"?"Pre-Order":"Ready Stock"}\n\nApakah stok masih tersedia? Terima kasih 🙏`)}`}
+            <a href={`https://wa.me/${WA}?text=${encodeURIComponent(p.status==="promo"?`Halo BukuKiddo! 👋\nSaya tertarik dengan promo:\n\n🔥 ${p.name}\n\nApakah promo ini masih berlaku? Terima kasih 🙏`:`Halo BukuKiddo! 👋\nSaya tertarik dengan buku berikut:\n\n📚 ${p.name}\n💰 ${fmt(p.price)}\n📦 Status: ${p.status==="preorder"?"Pre-Order":"Ready Stock"}\n\nApakah stok masih tersedia? Terima kasih 🙏`)}`}
               target="_blank" rel="noreferrer"
               onClick={e=>e.stopPropagation()}
               style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"#25D366",color:"#fff",borderRadius:20,padding:"8px 12px",textDecoration:"none",fontFamily:FF.body,fontWeight:800,fontSize:"0.8rem",marginTop:10}}>
@@ -210,39 +222,77 @@ function HomePage({products,loading,cart,setView,setSelected,filter,setFilter,se
 
 function ProductPage({product:p,onAdd,setView,cart,buyer,onLogout}){
   const[qty,setQty]=useState(1);const[added,setAdded]=useState(false);
+  const[itemQty,setItemQty]=useState({});const[addedName,setAddedName]=useState(null);
   const cartCount=cart.reduce((s,i)=>s+i.qty,0);
+  const isPromo=p.status==="promo";
   const doAdd=()=>{onAdd(p,qty);setAdded(true);setTimeout(()=>setAdded(false),2200);};
+  const getQty=(id)=>itemQty[id]||1;
+  const setQtyFor=(id,val)=>setItemQty(q=>({...q,[id]:Math.max(1,val)}));
+  const addPromoItem=(item)=>{
+    const cartProduct={id:`${p.id}_${item.id}`,name:item.name,price:parseInt(item.price)||0,emoji:p.emoji||"🔥",preview_images:p.preview_images||[],status:"promo"};
+    onAdd(cartProduct,getQty(item.id));
+    setAddedName(item.name);
+    setTimeout(()=>setAddedName(null),2200);
+  };
+  const waMsg=isPromo
+    ?`Halo BukuKiddo! 👋\nSaya tertarik dengan promo:\n\n🔥 ${p.name}\n\nApakah promo ini masih berlaku? Terima kasih 🙏`
+    :`Halo BukuKiddo! 👋\nSaya tertarik dengan buku berikut:\n\n📚 ${p.name}\n💰 ${fmt(p.price)}\n📦 Status: ${p.status==="preorder"?"Pre-Order":"Ready Stock"}\n\nApakah stok masih tersedia? Terima kasih 🙏`;
   return(<div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
     <Nav setView={setView} cartCount={cartCount} back="home" backLabel="BukuKiddo" buyer={buyer} onLogout={onLogout}/>
     <div style={{maxWidth:900,margin:"0 auto",padding:"28px 20px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:36}}>
       <div>
         <ImageGallery images={p.preview_images||[]} emoji={p.emoji||"📗"}/>
-        {p.preview_images&&p.preview_images.length>0&&<div style={{background:C.poBg,borderRadius:10,padding:"8px 14px",marginTop:12,display:"flex",gap:8}}><span>👀</span><p style={{margin:0,fontSize:"0.78rem",color:C.po,fontWeight:700}}>Preview Isi Buku — {p.preview_images.length} halaman sample</p></div>}
+        {p.preview_images&&p.preview_images.length>0&&<div style={{background:isPromo?C.promoBg:C.poBg,borderRadius:10,padding:"8px 14px",marginTop:12,display:"flex",gap:8}}><span>👀</span><p style={{margin:0,fontSize:"0.78rem",color:isPromo?C.promo:C.po,fontWeight:700}}>{isPromo?`Foto Flyer Promo — ${p.preview_images.length} foto`:`Preview Isi Buku — ${p.preview_images.length} halaman sample`}</p></div>}
       </div>
       <div>
         <div style={{marginBottom:10}}><Badge type={p.status}/></div>
         <div style={{fontSize:"0.78rem",color:C.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{p.category||"Umum"} · Dikirim dari {p.origin||""}</div>
         <h1 style={{fontFamily:FF.display,fontSize:"1.7rem",color:C.text,margin:"0 0 10px"}}>{p.name}</h1>
-        <div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange,marginBottom:14}}>{fmt(p.price)}</div>
+        {isPromo
+          ?<div style={{fontFamily:FF.display,fontSize:"1.3rem",color:C.promo,marginBottom:14}}>Mulai {promoRange(p.promo_items)}</div>
+          :<div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange,marginBottom:14}}>{fmt(p.price)}</div>}
         <p style={{color:C.muted,lineHeight:1.75,marginBottom:16,fontSize:"0.93rem"}}>{p.desc||""}</p>
-        <div style={{background:C.bg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${C.border}`}}>
+        {!isPromo&&<div style={{background:C.bg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${C.border}`}}>
           {[["📖","Halaman",(p.pages||"-")+" hal"],["👶","Usia",p.age||"-"],["📦","Berat",p.weight||"-"],["📍","Asal",p.origin||"-"]].map(([icon,l,v])=>(<div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:"0.86rem"}}><span style={{color:C.muted}} dangerouslySetInnerHTML={{__html:icon+" "+l}}/><span style={{fontWeight:800,color:C.text}}>{v}</span></div>))}
-        </div>
-        {p.status==="preorder"&&p.deadline&&<div style={{background:C.poBg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${C.po}30`}}><div style={{fontSize:"0.8rem",color:C.po,fontWeight:800,marginBottom:8}}>⏰ Pre-Order Ditutup Dalam:</div><Countdown deadline={p.deadline}/></div>}
+        </div>}
+        {(p.status==="preorder"||isPromo)&&p.deadline&&<div style={{background:isPromo?C.promoBg:C.poBg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${isPromo?C.promo:C.po}30`}}><div style={{fontSize:"0.8rem",color:isPromo?C.promo:C.po,fontWeight:800,marginBottom:8}}>⏰ {isPromo?"Promo Berakhir Dalam:":"Pre-Order Ditutup Dalam:"}</div><Countdown deadline={p.deadline}/></div>}
         {p.status==="ready"&&p.stock&&p.stock<=5&&<div style={{background:"#FFF3E0",borderRadius:12,padding:"10px 14px",marginBottom:14,border:"2px solid #FFC947"}}><span style={{color:"#E65100",fontWeight:800}}>🔥 Stok tersisa {p.stock} pcs!</span></div>}
-        <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`2px solid ${C.border}`,borderRadius:30,padding:"4px 8px"}}>
-            <button onClick={()=>setQty(Math.max(1,qty-1))} style={{width:32,height:32,borderRadius:"50%",border:"none",background:C.bg,cursor:"pointer",fontSize:"1.2rem",fontWeight:800,color:C.orange}}>−</button>
-            <span style={{fontFamily:FF.display,fontSize:"1.1rem",minWidth:24,textAlign:"center"}}>{qty}</span>
-            <button onClick={()=>setQty(qty+1)} style={{width:32,height:32,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontSize:"1.1rem",fontWeight:800,color:"#fff"}}>+</button>
+
+        {isPromo?(
+          <div style={{marginBottom:6}}>
+            <p style={{fontSize:"0.85rem",fontWeight:800,color:C.text,margin:"0 0 10px"}}>📚 Pilih Buku dari Promo Ini:</p>
+            {(p.promo_items||[]).length===0&&<p style={{fontSize:"0.85rem",color:C.muted}}>Belum ada daftar buku untuk promo ini.</p>}
+            {(p.promo_items||[]).map(item=>(
+              <div key={item.id} style={{background:"#fff",border:`2px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:120}}>
+                  <div style={{fontWeight:800,color:C.text,fontSize:"0.92rem"}}>{item.name}</div>
+                  <div style={{fontFamily:FF.display,color:C.promo,fontSize:"1rem",marginTop:2}}>{fmt(item.price)}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:6,background:C.bg,border:`2px solid ${C.border}`,borderRadius:20,padding:"4px 6px"}}>
+                  <button onClick={()=>setQtyFor(item.id,getQty(item.id)-1)} style={{width:26,height:26,borderRadius:"50%",border:"none",background:"#fff",cursor:"pointer",fontWeight:800,color:C.orange}}>−</button>
+                  <span style={{minWidth:18,textAlign:"center",fontFamily:FF.display,fontSize:"0.9rem"}}>{getQty(item.id)}</span>
+                  <button onClick={()=>setQtyFor(item.id,getQty(item.id)+1)} style={{width:26,height:26,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontWeight:800,color:"#fff"}}>+</button>
+                </div>
+                <button onClick={()=>addPromoItem(item)} style={{background:addedName===item.name?C.rs:C.promo,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontFamily:FF.display,fontSize:"0.85rem",cursor:"pointer",whiteSpace:"nowrap"}}>{addedName===item.name?"✅ OK":"+ Tambah"}</button>
+              </div>
+            ))}
           </div>
-          <button onClick={doAdd} style={{flex:1,background:added?C.rs:C.orange,color:"#fff",border:"none",borderRadius:30,padding:"14px 20px",fontFamily:FF.display,fontSize:"1.05rem",cursor:"pointer",transition:"background .3s"}}>{added?"✅ Ditambahkan!":"🛒 Tambah ke Keranjang"}</button>
-        </div>
-        <a href={`https://wa.me/${WA}?text=${encodeURIComponent(`Halo BukuKiddo! 👋\nSaya tertarik dengan buku berikut:\n\n📚 ${p.name}\n💰 ${fmt(p.price)}\n📦 Status: ${p.status==="preorder"?"Pre-Order":"Ready Stock"}\n\nApakah stok masih tersedia? Terima kasih 🙏`)}`} target="_blank" rel="noreferrer"
+        ):(
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`2px solid ${C.border}`,borderRadius:30,padding:"4px 8px"}}>
+              <button onClick={()=>setQty(Math.max(1,qty-1))} style={{width:32,height:32,borderRadius:"50%",border:"none",background:C.bg,cursor:"pointer",fontSize:"1.2rem",fontWeight:800,color:C.orange}}>−</button>
+              <span style={{fontFamily:FF.display,fontSize:"1.1rem",minWidth:24,textAlign:"center"}}>{qty}</span>
+              <button onClick={()=>setQty(qty+1)} style={{width:32,height:32,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontSize:"1.1rem",fontWeight:800,color:"#fff"}}>+</button>
+            </div>
+            <button onClick={doAdd} style={{flex:1,background:added?C.rs:C.orange,color:"#fff",border:"none",borderRadius:30,padding:"14px 20px",fontFamily:FF.display,fontSize:"1.05rem",cursor:"pointer",transition:"background .3s"}}>{added?"✅ Ditambahkan!":"🛒 Tambah ke Keranjang"}</button>
+          </div>
+        )}
+
+        <a href={`https://wa.me/${WA}?text=${encodeURIComponent(waMsg)}`} target="_blank" rel="noreferrer"
           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#25D366",color:"#fff",borderRadius:30,padding:"13px 20px",textDecoration:"none",fontFamily:FF.display,fontSize:"1rem",marginTop:10}}>
           💬 Tanya Stok via WhatsApp
         </a>
-        {added&&<div style={{background:C.rsBg,borderRadius:10,padding:"10px 14px",marginTop:10,textAlign:"center"}}><button onClick={()=>setView("cart")} style={{background:"none",border:"none",color:C.rs,fontFamily:FF.body,fontWeight:800,cursor:"pointer"}}>Lihat Keranjang & Checkout →</button></div>}
+        {(added||addedName)&&<div style={{background:C.rsBg,borderRadius:10,padding:"10px 14px",marginTop:10,textAlign:"center"}}><button onClick={()=>setView("cart")} style={{background:"none",border:"none",color:C.rs,fontFamily:FF.body,fontWeight:800,cursor:"pointer"}}>Lihat Keranjang & Checkout →</button></div>}
       </div>
     </div>
   </div>);
@@ -536,22 +586,65 @@ function ProductForm({initial,onSave,onCancel,title}){
   const isEdit=!!initial?.id;
   const[f,setF]=useState({name:initial?.name||"",desc:initial?.description||initial?.desc||"",price:initial?.price||"",status:initial?.status||"ready",deadline:initial?.deadline?new Date(initial.deadline).toISOString().slice(0,16):"",category:initial?.category||"",origin:initial?.origin||"Jakarta",emoji:initial?.emoji||"📗",pages:initial?.pages||"",age:initial?.age||"",weight:initial?.weight||"",stock:initial?.stock||""});
   const[images,setImages]=useState(initial?.preview_images||[]);
+  const[promoItems,setPromoItems]=useState(initial?.promo_items&&initial.promo_items.length>0?initial.promo_items.map(i=>({id:i.id||genItemId(),name:i.name||"",price:i.price||""})):[]);
   const[uploading,setUploading]=useState(false);const[saving,setSaving]=useState(false);
+  const isPromo=f.status==="promo";
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
-  const save=async()=>{if(!f.name||!f.price)return alert("Nama dan harga wajib diisi");setSaving(true);const payload={name:f.name,description:f.desc,price:parseInt(f.price),status:f.status,deadline:f.status==="preorder"&&f.deadline?new Date(f.deadline).toISOString():null,category:f.category,origin:f.origin,emoji:f.emoji||"📗",pages:parseInt(f.pages)||null,age:f.age,weight:f.weight,stock:f.status==="ready"?(parseInt(f.stock)||null):null,preview_images:images};let error;if(isEdit){({error}=await supabase.from("products").update(payload).eq("id",initial.id));}else{({error}=await supabase.from("products").insert([payload]));}setSaving(false);if(error)return alert("Gagal: "+error.message);onSave();};
+  const addPromoRow=()=>setPromoItems(arr=>[...arr,{id:genItemId(),name:"",price:""}]);
+  const removePromoRow=(id)=>setPromoItems(arr=>arr.filter(i=>i.id!==id));
+  const updatePromoRow=(id,key,val)=>setPromoItems(arr=>arr.map(i=>i.id===id?{...i,[key]:val}:i));
+  const onStatusChange=(val)=>{set("status",val);if(val==="promo"&&promoItems.length===0)addPromoRow();};
+  const save=async()=>{
+    if(isPromo){
+      const validItems=promoItems.filter(i=>i.name.trim()&&parseInt(i.price)>0);
+      if(!f.name.trim())return alert("Judul promo wajib diisi");
+      if(validItems.length===0)return alert("Tambahkan minimal 1 judul buku dengan nama & harga");
+      setSaving(true);
+      const minPrice=Math.min(...validItems.map(i=>parseInt(i.price)));
+      const payload={name:f.name,description:f.desc,price:minPrice,status:"promo",deadline:f.deadline?new Date(f.deadline).toISOString():null,category:f.category||"Promo",origin:f.origin,emoji:f.emoji||"🔥",pages:null,age:"",weight:"",stock:null,preview_images:images,promo_items:validItems.map(i=>({id:i.id,name:i.name.trim(),price:parseInt(i.price)}))};
+      let error;
+      if(isEdit){({error}=await supabase.from("products").update(payload).eq("id",initial.id));}else{({error}=await supabase.from("products").insert([payload]));}
+      setSaving(false);if(error)return alert("Gagal: "+error.message);onSave();return;
+    }
+    if(!f.name||!f.price)return alert("Nama dan harga wajib diisi");
+    setSaving(true);
+    const payload={name:f.name,description:f.desc,price:parseInt(f.price),status:f.status,deadline:f.status==="preorder"&&f.deadline?new Date(f.deadline).toISOString():null,category:f.category,origin:f.origin,emoji:f.emoji||"📗",pages:parseInt(f.pages)||null,age:f.age,weight:f.weight,stock:f.status==="ready"?(parseInt(f.stock)||null):null,preview_images:images,promo_items:[]};
+    let error;
+    if(isEdit){({error}=await supabase.from("products").update(payload).eq("id",initial.id));}else{({error}=await supabase.from("products").insert([payload]));}
+    setSaving(false);if(error)return alert("Gagal: "+error.message);onSave();
+  };
   const inp=(k,label,type,ph,full)=>(<div style={{marginBottom:10,gridColumn:full?"1/-1":undefined}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>{label}</label><input type={type||"text"} placeholder={ph||""} value={f[k]} onChange={e=>set(k,e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",outline:"none"}}/></div>);
   const content=(<>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
-      {inp("name","Nama Buku *","text","Judul buku...",true)}{inp("emoji","Emoji","text","📗")}{inp("price","Harga (Rp) *","number","75000")}
-      {inp("category","Kategori","text","Petualangan")}{inp("origin","Asal Pengiriman","text","Jakarta")}
-      {inp("age","Usia Pembaca","text","5-9 tahun")}{inp("pages","Halaman","number","100")}{inp("weight","Berat","text","300g")}
+      {inp("name",isPromo?"Judul Promo *":"Nama Buku *","text",isPromo?"Promo Spesial Mei...":"Judul buku...",true)}
+      {inp("emoji","Emoji","text",isPromo?"🔥":"📗")}
+      {!isPromo&&inp("price","Harga (Rp) *","number","75000")}
+      {inp("category","Kategori","text",isPromo?"Promo Flyer":"Petualangan")}
+      {inp("origin","Asal Pengiriman","text","Jakarta")}
+      {!isPromo&&inp("age","Usia Pembaca","text","5-9 tahun")}
+      {!isPromo&&inp("pages","Halaman","number","100")}
+      {!isPromo&&inp("weight","Berat","text","300g")}
     </div>
-    <div style={{marginBottom:10}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Deskripsi</label><textarea value={f.desc} onChange={e=>set("desc",e.target.value)} rows={3} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",resize:"none",outline:"none"}}/></div>
+    <div style={{marginBottom:10}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>{isPromo?"Deskripsi Promo":"Deskripsi"}</label><textarea value={f.desc} onChange={e=>set("desc",e.target.value)} rows={3} placeholder={isPromo?"Contoh: Diskon spesial dari supplier, buruan sebelum kehabisan!":""} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",resize:"none",outline:"none"}}/></div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-      <div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Status</label><select value={f.status} onChange={e=>set("status",e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem"}}><option value="ready">✅ Ready Stock</option><option value="preorder">⏳ Pre-Order</option></select></div>
+      <div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Status</label><select value={f.status} onChange={e=>onStatusChange(e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem"}}><option value="ready">✅ Ready Stock</option><option value="preorder">⏳ Pre-Order</option><option value="promo">🔥 Promo Spesial</option></select></div>
       {f.status==="ready"&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Stok</label><input type="number" value={f.stock} onChange={e=>set("stock",e.target.value)} placeholder="0" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
-      {f.status==="preorder"&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Deadline</label><input type="datetime-local" value={f.deadline} onChange={e=>set("deadline",e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
+      {(f.status==="preorder"||isPromo)&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>{isPromo?"Promo Berakhir":"Deadline"}</label><input type="datetime-local" value={f.deadline} onChange={e=>set("deadline",e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
     </div>
+    {isPromo&&<div style={{background:C.promoBg,borderRadius:12,padding:"14px",marginBottom:16,border:`2px solid ${C.promo}30`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <label style={{fontSize:"0.8rem",fontWeight:800,color:C.promo}}>📚 Daftar Buku dalam Promo Ini *</label>
+        <span style={{fontSize:"0.72rem",color:C.muted,fontWeight:700}}>{promoItems.length} judul</span>
+      </div>
+      {promoItems.map((item,idx)=>(
+        <div key={item.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+          <input value={item.name} onChange={e=>updatePromoRow(item.id,"name",e.target.value)} placeholder={`Judul buku #${idx+1}`} style={{flex:2,padding:"8px 10px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.85rem",outline:"none",minWidth:0}}/>
+          <input type="number" value={item.price} onChange={e=>updatePromoRow(item.id,"price",e.target.value)} placeholder="Harga" style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.85rem",outline:"none",minWidth:0}}/>
+          <button onClick={()=>removePromoRow(item.id)} style={{background:"#fff0f0",color:"#e74c3c",border:"1.5px solid #fcc",borderRadius:8,width:32,height:32,cursor:"pointer",flexShrink:0}}>✕</button>
+        </div>
+      ))}
+      <button onClick={addPromoRow} style={{width:"100%",background:"#fff",color:C.promo,border:`2px dashed ${C.promo}`,borderRadius:10,padding:"9px",cursor:"pointer",fontFamily:FF.body,fontWeight:800,fontSize:"0.85rem",marginTop:4}}>+ Tambah Judul Buku</button>
+    </div>}
     <div style={{background:C.bg,borderRadius:12,padding:"14px",marginBottom:16,border:`2px solid ${C.border}`}}><ImageUploader images={images} setImages={setImages} productId={initial?.id||null} uploading={uploading} setUploading={setUploading}/></div>
     <div style={{display:"flex",gap:10}}>
       {onCancel&&<button onClick={onCancel} style={{flex:1,background:"#f5f5f5",color:C.muted,border:"none",borderRadius:16,padding:"12px",fontFamily:FF.display,fontSize:"1rem",cursor:"pointer"}}>Batal</button>}
@@ -696,7 +789,9 @@ function AdminPage({products,fetchProducts,setView,auth,setAuth,banks,fetchBanks
             <div style={{padding:"12px 14px"}}>
               <div style={{fontFamily:FF.display,fontSize:"0.92rem",color:C.text,marginBottom:4}}>{p.name}</div>
               <p style={{fontSize:"0.78rem",color:C.muted,margin:"0 0 8px",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.desc||p.description||"-"}</p>
-              <div style={{fontFamily:FF.display,fontSize:"1.05rem",color:C.orange,marginBottom:10}}>{fmt(p.price)}</div>
+              {p.status==="promo"
+                ?<div style={{marginBottom:10}}><div style={{fontFamily:FF.display,fontSize:"0.95rem",color:C.promo}}>{promoRange(p.promo_items)}</div><div style={{fontSize:"0.74rem",color:C.muted,fontWeight:700,marginTop:2}}>📚 {(p.promo_items||[]).length} judul buku</div></div>
+                :<div style={{fontFamily:FF.display,fontSize:"1.05rem",color:C.orange,marginBottom:10}}>{fmt(p.price)}</div>}
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>setEditProd(p)} style={{flex:1,background:C.poBg,color:C.orange,border:`1.5px solid ${C.orange}`,borderRadius:10,padding:"7px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>✏️ Edit</button>
                 <button onClick={()=>delProd(p.id)} style={{flex:1,background:"#fff0f0",color:"#e74c3c",border:"1.5px solid #fcc",borderRadius:10,padding:"7px",cursor:"pointer",fontFamily:FF.body,fontWeight:700,fontSize:"0.82rem"}}>🗑 Hapus</button>
@@ -732,10 +827,11 @@ export default function App(){
     const{data}=await supabase.from("products").select("*").order("created_at",{ascending:false});
     if(data){
       const now=new Date();
-      const expired=data.filter(p=>p.status==="preorder"&&p.deadline&&new Date(p.deadline)<now);
+      const isExpired=p=>(p.status==="preorder"||p.status==="promo")&&p.deadline&&new Date(p.deadline)<now;
+      const expired=data.filter(isExpired);
       if(expired.length>0){
         await Promise.all(expired.map(p=>supabase.from("products").delete().eq("id",p.id)));
-        const fresh=data.filter(p=>!(p.status==="preorder"&&p.deadline&&new Date(p.deadline)<now));
+        const fresh=data.filter(p=>!isExpired(p));
         setProducts(fresh.map(mapProduct));
       } else {
         setProducts(data.map(mapProduct));
