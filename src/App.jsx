@@ -239,61 +239,113 @@ function ProductPage({product:p,onAdd,setView,cart,buyer,onLogout}){
     :`Halo BukuKiddo! 👋\nSaya tertarik dengan buku berikut:\n\n📚 ${p.name}\n💰 ${fmt(p.price)}\n📦 Status: ${p.status==="preorder"?"Pre-Order":"Ready Stock"}\n\nApakah stok masih tersedia? Terima kasih 🙏`;
   return(<div style={{fontFamily:FF.body,background:C.bg,minHeight:"100vh"}}>
     <Nav setView={setView} cartCount={cartCount} back="home" backLabel="BukuKiddo" buyer={buyer} onLogout={onLogout}/>
-    <div style={{maxWidth:900,margin:"0 auto",padding:"28px 20px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:36}}>
-      <div>
+    <div style={{maxWidth:600,margin:"0 auto",padding:"0 0 48px"}}>
+
+      {/* ── FOTO ── */}
+      <div style={{background:"#fff",marginBottom:0}}>
         <ImageGallery images={p.preview_images||[]} emoji={p.emoji||"📗"}/>
-        {p.preview_images&&p.preview_images.length>0&&<div style={{background:isPromo?C.promoBg:C.poBg,borderRadius:10,padding:"8px 14px",marginTop:12,display:"flex",gap:8}}><span>👀</span><p style={{margin:0,fontSize:"0.78rem",color:isPromo?C.promo:C.po,fontWeight:700}}>{isPromo?`Foto Flyer Promo — ${p.preview_images.length} foto`:`Preview Isi Buku — ${p.preview_images.length} halaman sample`}</p></div>}
       </div>
-      <div>
-        <div style={{marginBottom:10}}><Badge type={p.status}/></div>
-        <div style={{fontSize:"0.78rem",color:C.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{p.category||"Umum"} · Dikirim dari {p.origin||""}</div>
-        <h1 style={{fontFamily:FF.display,fontSize:"1.7rem",color:C.text,margin:"0 0 10px"}}>{p.name}</h1>
+
+      {/* ── INFO UTAMA ── */}
+      <div style={{background:"#fff",padding:"18px 20px 20px",marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+          <Badge type={p.status}/>
+          <span style={{fontSize:"0.75rem",color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{p.category||"Umum"} · {p.origin||""}</span>
+        </div>
+        <h1 style={{fontFamily:FF.display,fontSize:"1.5rem",color:C.text,margin:"0 0 8px",lineHeight:1.3}}>{p.name}</h1>
         {isPromo
-          ?<div style={{fontFamily:FF.display,fontSize:"1.3rem",color:C.promo,marginBottom:14}}>Mulai {promoRange(p.promo_items)}</div>
-          :<div style={{fontFamily:FF.display,fontSize:"2rem",color:C.orange,marginBottom:14}}>{fmt(p.price)}</div>}
-        <p style={{color:C.muted,lineHeight:1.75,marginBottom:16,fontSize:"0.93rem"}}>{p.desc||""}</p>
-        {!isPromo&&<div style={{background:C.bg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${C.border}`}}>
-          {[["📖","Halaman",(p.pages||"-")+" hal"],["👶","Usia",p.age||"-"],["📦","Berat",p.weight||"-"],["📍","Asal",p.origin||"-"]].map(([icon,l,v])=>(<div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:"0.86rem"}}><span style={{color:C.muted}} dangerouslySetInnerHTML={{__html:icon+" "+l}}/><span style={{fontWeight:800,color:C.text}}>{v}</span></div>))}
-        </div>}
-        {(p.status==="preorder"||isPromo)&&p.deadline&&<div style={{background:isPromo?C.promoBg:C.poBg,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`2px solid ${isPromo?C.promo:C.po}30`}}><div style={{fontSize:"0.8rem",color:isPromo?C.promo:C.po,fontWeight:800,marginBottom:8}}>⏰ {isPromo?"Promo Berakhir Dalam:":"Pre-Order Ditutup Dalam:"}</div><Countdown deadline={p.deadline}/></div>}
-        {p.status==="ready"&&p.stock&&p.stock<=5&&<div style={{background:"#FFF3E0",borderRadius:12,padding:"10px 14px",marginBottom:14,border:"2px solid #FFC947"}}><span style={{color:"#E65100",fontWeight:800}}>🔥 Stok tersisa {p.stock} pcs!</span></div>}
+          ?<div style={{fontFamily:FF.display,fontSize:"1.4rem",color:C.promo}}>Mulai {promoRange(p.promo_items)}</div>
+          :<div style={{fontFamily:FF.display,fontSize:"1.8rem",color:C.orange}}>{fmt(p.price)}</div>}
+      </div>
 
-        {isPromo?(
-          <div style={{marginBottom:6}}>
-            <p style={{fontSize:"0.85rem",fontWeight:800,color:C.text,margin:"0 0 10px"}}>📚 Pilih Buku dari Promo Ini:</p>
-            {(p.promo_items||[]).length===0&&<p style={{fontSize:"0.85rem",color:C.muted}}>Belum ada daftar buku untuk promo ini.</p>}
-            {(p.promo_items||[]).map(item=>(
-              <div key={item.id} style={{background:"#fff",border:`2px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                <div style={{flex:1,minWidth:120}}>
-                  <div style={{fontWeight:800,color:C.text,fontSize:"0.92rem"}}>{item.name}</div>
-                  <div style={{fontFamily:FF.display,color:C.promo,fontSize:"1rem",marginTop:2}}>{fmt(item.price)}</div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:6,background:C.bg,border:`2px solid ${C.border}`,borderRadius:20,padding:"4px 6px"}}>
-                  <button onClick={()=>setQtyFor(item.id,getQty(item.id)-1)} style={{width:26,height:26,borderRadius:"50%",border:"none",background:"#fff",cursor:"pointer",fontWeight:800,color:C.orange}}>−</button>
-                  <span style={{minWidth:18,textAlign:"center",fontFamily:FF.display,fontSize:"0.9rem"}}>{getQty(item.id)}</span>
-                  <button onClick={()=>setQtyFor(item.id,getQty(item.id)+1)} style={{width:26,height:26,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontWeight:800,color:"#fff"}}>+</button>
-                </div>
-                <button onClick={()=>addPromoItem(item)} style={{background:addedName===item.name?C.rs:C.promo,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontFamily:FF.display,fontSize:"0.85rem",cursor:"pointer",whiteSpace:"nowrap"}}>{addedName===item.name?"✅ OK":"+ Tambah"}</button>
+      {/* ── DESKRIPSI ── */}
+      {p.desc&&<div style={{background:"#fff",padding:"16px 20px",marginBottom:10}}>
+        <p style={{fontSize:"0.78rem",fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:"0.5px",margin:"0 0 8px"}}>Deskripsi</p>
+        <p style={{color:C.text,lineHeight:1.8,fontSize:"0.95rem",margin:0,whiteSpace:"pre-line"}}>{p.desc}</p>
+      </div>}
+
+      {/* ── SPESIFIKASI (non-promo) ── */}
+      {!isPromo&&(p.pages||p.age||p.weight||p.origin)&&<div style={{background:"#fff",padding:"16px 20px",marginBottom:10}}>
+        <p style={{fontSize:"0.78rem",fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:"0.5px",margin:"0 0 10px"}}>Detail Buku</p>
+        {[["📖","Jumlah Halaman",(p.pages||"-")+" hal"],["👶","Usia Pembaca",p.age||"-"],["📦","Berat",p.weight||"-"],["📍","Dikirim dari",p.origin||"-"]].map(([icon,l,v])=>(
+          <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
+            <span style={{color:C.muted,fontSize:"0.88rem"}}>{icon} {l}</span>
+            <span style={{fontWeight:800,color:C.text,fontSize:"0.88rem"}}>{v}</span>
+          </div>
+        ))}
+      </div>}
+
+      {/* ── COUNTDOWN ── */}
+      {(p.status==="preorder"||isPromo)&&p.deadline&&<div style={{background:"#fff",padding:"16px 20px",marginBottom:10}}>
+        <div style={{background:isPromo?C.promoBg:C.poBg,borderRadius:12,padding:"14px 16px",border:`2px solid ${isPromo?C.promo:C.po}30`}}>
+          <div style={{fontSize:"0.82rem",color:isPromo?C.promo:C.po,fontWeight:800,marginBottom:10}}>⏰ {isPromo?"Promo Berakhir Dalam:":"Pre-Order Ditutup Dalam:"}</div>
+          <Countdown deadline={p.deadline}/>
+        </div>
+      </div>}
+
+      {/* ── STOK MENIPIS ── */}
+      {p.status==="ready"&&p.stock&&p.stock<=5&&<div style={{background:"#fff",padding:"0 20px 10px"}}>
+        <div style={{background:"#FFF3E0",borderRadius:12,padding:"10px 14px",border:"2px solid #FFC947"}}><span style={{color:"#E65100",fontWeight:800}}>🔥 Stok tersisa {p.stock} pcs!</span></div>
+      </div>}
+
+      {/* ── PREVIEW LABEL ── */}
+      {p.preview_images&&p.preview_images.length>0&&<div style={{background:"#fff",padding:"0 20px 12px"}}>
+        <div style={{background:isPromo?C.promoBg:C.poBg,borderRadius:10,padding:"8px 14px",display:"flex",gap:8,alignItems:"center"}}>
+          <span>👀</span>
+          <p style={{margin:0,fontSize:"0.78rem",color:isPromo?C.promo:C.po,fontWeight:700}}>{isPromo?`Foto Flyer Promo — ${p.preview_images.length} foto`:`Preview Isi Buku — ${p.preview_images.length} halaman sample`}</p>
+        </div>
+      </div>}
+
+      {/* ── DAFTAR BUKU PROMO ── */}
+      {isPromo&&<div style={{background:"#fff",padding:"16px 20px",marginBottom:10}}>
+        <p style={{fontSize:"0.78rem",fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:"0.5px",margin:"0 0 12px"}}>📚 Pilih Buku dari Promo Ini</p>
+        {(p.promo_items||[]).length===0&&<p style={{fontSize:"0.88rem",color:C.muted,textAlign:"center",padding:"16px 0"}}>Belum ada daftar buku untuk promo ini.</p>}
+        {(p.promo_items||[]).map(item=>(
+          <div key={item.id} style={{border:`2px solid ${C.border}`,borderRadius:14,padding:"14px",marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+              <div style={{flex:1,paddingRight:8}}>
+                <div style={{fontWeight:800,color:C.text,fontSize:"0.95rem",lineHeight:1.4}}>{item.name}</div>
+                <div style={{fontFamily:FF.display,color:C.promo,fontSize:"1.1rem",marginTop:4}}>{fmt(item.price)}</div>
               </div>
-            ))}
-          </div>
-        ):(
-          <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`2px solid ${C.border}`,borderRadius:30,padding:"4px 8px"}}>
-              <button onClick={()=>setQty(Math.max(1,qty-1))} style={{width:32,height:32,borderRadius:"50%",border:"none",background:C.bg,cursor:"pointer",fontSize:"1.2rem",fontWeight:800,color:C.orange}}>−</button>
-              <span style={{fontFamily:FF.display,fontSize:"1.1rem",minWidth:24,textAlign:"center"}}>{qty}</span>
-              <button onClick={()=>setQty(qty+1)} style={{width:32,height:32,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontSize:"1.1rem",fontWeight:800,color:"#fff"}}>+</button>
             </div>
-            <button onClick={doAdd} style={{flex:1,background:added?C.rs:C.orange,color:"#fff",border:"none",borderRadius:30,padding:"14px 20px",fontFamily:FF.display,fontSize:"1.05rem",cursor:"pointer",transition:"background .3s"}}>{added?"✅ Ditambahkan!":"🛒 Tambah ke Keranjang"}</button>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,background:C.bg,border:`2px solid ${C.border}`,borderRadius:20,padding:"4px 8px"}}>
+                <button onClick={()=>setQtyFor(item.id,getQty(item.id)-1)} style={{width:28,height:28,borderRadius:"50%",border:"none",background:"#fff",cursor:"pointer",fontWeight:800,color:C.orange,fontSize:"1rem"}}>−</button>
+                <span style={{minWidth:20,textAlign:"center",fontFamily:FF.display,fontSize:"1rem"}}>{getQty(item.id)}</span>
+                <button onClick={()=>setQtyFor(item.id,getQty(item.id)+1)} style={{width:28,height:28,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontWeight:800,color:"#fff",fontSize:"1rem"}}>+</button>
+              </div>
+              <button onClick={()=>addPromoItem(item)} style={{flex:1,background:addedName===item.name?C.rs:C.promo,color:"#fff",border:"none",borderRadius:20,padding:"11px",fontFamily:FF.display,fontSize:"0.95rem",cursor:"pointer"}}>
+                {addedName===item.name?"✅ Ditambahkan!":"🛒 Tambah ke Keranjang"}
+              </button>
+            </div>
           </div>
-        )}
+        ))}
+      </div>}
 
+      {/* ── TOMBOL AKSI (non-promo) ── */}
+      {!isPromo&&<div style={{background:"#fff",padding:"16px 20px",marginBottom:10}}>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:C.bg,border:`2px solid ${C.border}`,borderRadius:30,padding:"4px 8px"}}>
+            <button onClick={()=>setQty(Math.max(1,qty-1))} style={{width:36,height:36,borderRadius:"50%",border:"none",background:"#fff",cursor:"pointer",fontSize:"1.3rem",fontWeight:800,color:C.orange}}>−</button>
+            <span style={{fontFamily:FF.display,fontSize:"1.2rem",minWidth:28,textAlign:"center"}}>{qty}</span>
+            <button onClick={()=>setQty(qty+1)} style={{width:36,height:36,borderRadius:"50%",border:"none",background:C.orange,cursor:"pointer",fontSize:"1.2rem",fontWeight:800,color:"#fff"}}>+</button>
+          </div>
+          <button onClick={doAdd} style={{flex:1,background:added?C.rs:C.orange,color:"#fff",border:"none",borderRadius:30,padding:"15px 20px",fontFamily:FF.display,fontSize:"1.1rem",cursor:"pointer",transition:"background .3s"}}>
+            {added?"✅ Ditambahkan!":"🛒 Tambah ke Keranjang"}
+          </button>
+        </div>
+        {added&&<div style={{background:C.rsBg,borderRadius:12,padding:"12px 16px",marginTop:12,textAlign:"center"}}><button onClick={()=>setView("cart")} style={{background:"none",border:"none",color:C.rs,fontFamily:FF.body,fontWeight:800,cursor:"pointer",fontSize:"0.95rem"}}>Lihat Keranjang & Checkout →</button></div>}
+      </div>}
+
+      {/* ── WA BUTTON ── */}
+      <div style={{padding:"0 20px"}}>
+        {addedName&&<div style={{background:C.rsBg,borderRadius:12,padding:"12px 16px",marginBottom:12,textAlign:"center"}}><button onClick={()=>setView("cart")} style={{background:"none",border:"none",color:C.rs,fontFamily:FF.body,fontWeight:800,cursor:"pointer",fontSize:"0.95rem"}}>Lihat Keranjang & Checkout →</button></div>}
         <a href={`https://wa.me/${WA}?text=${encodeURIComponent(waMsg)}`} target="_blank" rel="noreferrer"
-          style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#25D366",color:"#fff",borderRadius:30,padding:"13px 20px",textDecoration:"none",fontFamily:FF.display,fontSize:"1rem",marginTop:10}}>
+          style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#25D366",color:"#fff",borderRadius:30,padding:"14px 20px",textDecoration:"none",fontFamily:FF.display,fontSize:"1rem"}}>
           💬 Tanya Stok via WhatsApp
         </a>
-        {(added||addedName)&&<div style={{background:C.rsBg,borderRadius:10,padding:"10px 14px",marginTop:10,textAlign:"center"}}><button onClick={()=>setView("cart")} style={{background:"none",border:"none",color:C.rs,fontFamily:FF.body,fontWeight:800,cursor:"pointer"}}>Lihat Keranjang & Checkout →</button></div>}
       </div>
+
     </div>
   </div>);
 }
