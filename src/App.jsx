@@ -163,12 +163,49 @@ function ImageGallery({images,emoji}){
 
 function ImageUploader({images,setImages,productId,uploading,setUploading}){
   const ref=useRef();
-  const handleFiles=async(files)=>{const rem=MAX_IMG-images.length;if(rem<=0)return alert("Maks "+MAX_IMG+" gambar");const toUp=Array.from(files).slice(0,rem);setUploading(true);try{const pid=productId||"temp_"+Date.now();const urls=await Promise.all(toUp.map(f=>uploadImage(f,pid+"/"+Date.now()+"_"+f.name)));setImages(p=>[...p,...urls]);}catch(e){alert("Gagal upload: "+e.message);}setUploading(false);};
+  const handleFiles=async(e)=>{
+    const files=e.target.files;
+    if(!files||files.length===0)return;
+    const rem=MAX_IMG-images.length;
+    if(rem<=0)return alert("Maksimal "+MAX_IMG+" foto sudah tercapai");
+    const toUp=Array.from(files).slice(0,rem);
+    e.target.value=""; // reset agar bisa tap lagi di mobile
+    setUploading(true);
+    try{
+      const pid=productId||"temp_"+Date.now();
+      const urls=await Promise.all(toUp.map(f=>uploadImage(f,pid+"/"+Date.now()+"_"+f.name)));
+      setImages(p=>[...p,...urls]);
+    }catch(e){alert("Gagal upload: "+e.message);}
+    setUploading(false);
+  };
   const remove=async(idx)=>{if(!window.confirm("Hapus gambar?"))return;await deleteImage(images[idx]);setImages(p=>p.filter((_,i)=>i!==idx));};
+  const sisa=MAX_IMG-images.length;
   return(<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><label style={{fontSize:"0.8rem",fontWeight:700,color:C.text}}>📸 Preview Isi Buku</label><span style={{fontSize:"0.75rem",color:C.muted,fontWeight:700}}>{images.length}/{MAX_IMG} foto</span></div>
-    {images.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}}>{images.map((url,i)=>(<div key={i} style={{position:"relative",aspectRatio:"1",borderRadius:10,overflow:"hidden",border:`2px solid ${C.border}`}}><img src={url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><button onClick={()=>remove(i)} style={{position:"absolute",top:3,right:3,background:"rgba(231,76,60,0.9)",color:"#fff",border:"none",borderRadius:"50%",width:22,height:22,fontSize:"0.7rem",cursor:"pointer"}}>✕</button>{i===0&&<div style={{position:"absolute",bottom:3,left:3,background:"rgba(232,97,42,0.85)",color:"#fff",borderRadius:6,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>Cover</div>}</div>))}</div>}
-    {images.length<MAX_IMG&&<div onClick={()=>!uploading&&ref.current.click()} style={{border:`2px dashed ${uploading?C.mint:C.border}`,borderRadius:12,padding:"16px",textAlign:"center",cursor:uploading?"not-allowed":"pointer",background:uploading?"#E6FAF6":"#fafafa"}}><input ref={ref} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>handleFiles(e.target.files)}/>{uploading?<><div style={{fontSize:"1.8rem"}}>⏳</div><p style={{margin:"4px 0 0",fontSize:"0.82rem",color:C.mint,fontWeight:700}}>Mengupload...</p></>:<><div style={{fontSize:"1.8rem"}}>📷</div><p style={{margin:"4px 0 0",fontSize:"0.82rem",color:C.muted,fontWeight:700}}>Tap untuk pilih foto</p><p style={{margin:"4px 0 0",fontSize:"0.72rem",color:C.muted}}>Sisa: {MAX_IMG-images.length} slot</p></>}</div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <label style={{fontSize:"0.8rem",fontWeight:700,color:C.text}}>📸 Preview Isi Buku</label>
+      <span style={{fontSize:"0.75rem",color:sisa===0?"#e74c3c":C.muted,fontWeight:700}}>{images.length}/{MAX_IMG} foto</span>
+    </div>
+    {images.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}}>
+      {images.map((url,i)=>(<div key={i} style={{position:"relative",aspectRatio:"1",borderRadius:10,overflow:"hidden",border:`2px solid ${C.border}`}}>
+        <img src={url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+        <button onClick={()=>remove(i)} style={{position:"absolute",top:3,right:3,background:"rgba(231,76,60,0.9)",color:"#fff",border:"none",borderRadius:"50%",width:22,height:22,fontSize:"0.7rem",cursor:"pointer"}}>✕</button>
+        {i===0&&<div style={{position:"absolute",bottom:3,left:3,background:"rgba(232,97,42,0.85)",color:"#fff",borderRadius:6,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>Cover</div>}
+      </div>))}
+    </div>}
+    <input ref={ref} type="file" accept="image/*" style={{display:"none"}} onChange={handleFiles}/>
+    {sisa>0
+      ?<div onClick={()=>!uploading&&ref.current.click()} style={{border:`2px dashed ${uploading?C.mint:C.orange}`,borderRadius:12,padding:"18px 16px",textAlign:"center",cursor:uploading?"not-allowed":"pointer",background:uploading?"#E6FAF6":C.poBg}}>
+        {uploading
+          ?<><div style={{fontSize:"2rem"}}>⏳</div><p style={{margin:"6px 0 0",fontSize:"0.85rem",color:C.mint,fontWeight:700}}>Mengupload foto...</p></>
+          :<><div style={{fontSize:"2rem"}}>📷</div>
+            <p style={{margin:"6px 0 2px",fontSize:"0.9rem",color:C.orange,fontWeight:800}}>Tap untuk pilih foto</p>
+            <p style={{margin:0,fontSize:"0.75rem",color:C.muted}}>Tap lagi untuk tambah foto berikutnya · Sisa {sisa} slot</p></>
+        }
+      </div>
+      :<div style={{border:`2px solid ${C.border}`,borderRadius:12,padding:"12px",textAlign:"center",background:"#f9f9f9"}}>
+        <p style={{margin:0,fontSize:"0.82rem",color:C.muted,fontWeight:700}}>✅ Semua {MAX_IMG} slot foto sudah terisi</p>
+      </div>
+    }
   </div>);
 }
 
@@ -677,7 +714,7 @@ function ProductForm({initial,onSave,onCancel,title}){
       {!isPromo&&inp("pages","Halaman","number","100")}
       {!isPromo&&inp("weight","Berat","text","300g")}
     </div>
-    <div style={{marginBottom:10}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>{isPromo?"Deskripsi Promo":"Deskripsi"}</label><textarea value={f.desc} onChange={e=>set("desc",e.target.value)} rows={3} placeholder={isPromo?"Contoh: Diskon spesial dari supplier, buruan sebelum kehabisan!":""} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box",resize:"none",outline:"none"}}/></div>
+    <div style={{marginBottom:10}}><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>{isPromo?"Deskripsi Promo":"Deskripsi"}</label><textarea value={f.desc} onChange={e=>set("desc",e.target.value)} rows={8} placeholder={isPromo?"Contoh: Diskon spesial dari supplier, buruan sebelum kehabisan!":""} style={{width:"100%",padding:"12px 14px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.92rem",boxSizing:"border-box",resize:"vertical",outline:"none",overflowY:"auto",lineHeight:1.7,minHeight:160,maxHeight:400}}/></div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
       <div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Status</label><select value={f.status} onChange={e=>onStatusChange(e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem"}}><option value="ready">✅ Ready Stock</option><option value="preorder">⏳ Pre-Order</option><option value="promo">🔥 Promo Spesial</option></select></div>
       {f.status==="ready"&&<div><label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:3}}>Stok</label><input type="number" value={f.stock} onChange={e=>set("stock",e.target.value)} placeholder="0" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`2px solid ${C.border}`,fontFamily:FF.body,fontSize:"0.88rem",boxSizing:"border-box"}}/></div>}
